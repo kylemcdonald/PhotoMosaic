@@ -14,10 +14,10 @@
  - save screenshots
  
  - debug status info
- - available and actual resolution
- - how many images are in use
- - last time images were updated
- - network connectivity info
+  - available and actual resolution
+  - how many images are in use
+  - last time images were updated
+  - network connectivity info
  - debug control panel
  - consider dominant rather than average color?
  - make sure cache is running regularly
@@ -26,7 +26,6 @@
 #include "ofMain.h"
 #include "ofxOsc.h"
 #include "Highpass.h"
-#include "ofxAssignment.h"
 
 float smoothstep(float x) {
     return x*x*(3 - 2*x);
@@ -99,7 +98,7 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     ofFbo::Settings settings;
     settings.width = width;
     settings.height = height;
-    //        settings.numSamples = 1;
+//        settings.numSamples = 1;
     settings.useDepth = false;
     buffer.allocate(settings);
     
@@ -148,57 +147,33 @@ public:
     int side;
     float brightness, hue;
     ofColor average;
-    vector<ofColor> grid;
-    Tile(int x, int y, int side, const vector<ofColor>& grid)
+    Tile(int x, int y, int side, ofColor average)
     :ofVec2f(x, y)
     ,side(side)
-    ,grid(grid) {
+    ,average(average) {
+        brightness = average.getBrightness();
+        hue = average.getHue();
     }
     static vector<Tile> buildTiles(const ofPixels& pix, int side) {
-        // we could do this with resizing but OF doesn't have a good downsampling method
-        int subsampling = 3;
-        float subsample = (float) side / subsampling;
         int w = pix.getWidth(), h = pix.getHeight();
         int nx = w / side, ny = h / side;
         vector<Tile> tiles;
-        for(int y = 0; y < h; y+=side) {
-            for(int x = 0; x < w; x+=side) {
-                vector<ofColor> grid;
-                for(int ky = 0; ky < subsampling; ky++) {
-                    for(int kx = 0; kx < subsampling; kx++) {
-                        grid.push_back(getAverage(pix, x+kx*subsample, y+ky*subsample, subsample, subsample));
-                    }
-                }
-                tiles.emplace_back(x, y, side, grid);
+        for(int j = 0; j < h; j+=side) {
+            for(int i = 0; i < w; i+=side) {
+                ofColor avg = getAverage(pix, i, j, side, side);
+                tiles.emplace_back(i, j, side, avg);
             }
         }
         return tiles;
     }
 };
 
-float getCost(const ofColor& c1, const ofColor& c2) {
-    long rmean = ((long) c1.r + (long) c2.r) / 2;
-    long r = (long) c1.r - (long) c2.r;
-    long g = (long) c1.g - (long) c2.g;
-    long b = (long) c1.b - (long) c2.b;
-    return (((512 + rmean)*r*r)>>8) + 4*g*g + (((767-rmean)*b*b)>>8);
+bool TileCompareBrightness(const Tile& a, const Tile& b) {
+    return a.brightness < b.brightness;
 }
 
-vector<vector<double>> getCost(const vector<Tile>& a, const vector<Tile>& b) {
-    int n = a.size();
-    vector<vector<double>> cost(n, vector<double>(n, 0));
-    for(int i = 0; i < n; i++) {
-        const Tile& at = a[i];
-        for(int j = 0; j < n; j++) {
-            const Tile& bt = b[j];
-            double& dist = cost[i][j];
-            int m = at.grid.size();
-            for(int k = 0; k < m; k++) {
-                dist += getCost(at.grid[k], bt.grid[k]);
-            }
-        }
-    }
-    return cost;
+bool TileCompareHue(const Tile& a, const Tile& b) {
+    return a.hue < b.hue;
 }
 
 // lerps along x then along y, linearly
@@ -233,13 +208,22 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
     mesh.addTexCoord(swc); mesh.addVertex(swp);
 }
 
+void hsbSort(vector<Tile>& tiles, int steps = 128) {
+    int n = tiles.size();
+    int stepSize = n / steps;
+    for(int i = 0; i < n; i += stepSize) {
+        int end = i + stepSize;
+        end = MIN(end, n);
+        sort(tiles.begin() + i, tiles.begin() + end, TileCompareHue);
+    }
+}
+
 class ofApp : public ofBaseApp {
 public:
     int side, width, height;
     int hsbSortSteps;
     float transitionSeconds;
     
-    ofxAssignment solver;
     Highpass highpass;
     float highpassSize, highpassContrast;
     
@@ -247,7 +231,7 @@ public:
     vector<Tile> sourceTiles, beginTiles, endTiles;
     
     ofxOscReceiver osc;
-    
+
     uint64_t transitionBegin;
     float transition = 0;
     
@@ -286,17 +270,6 @@ public:
     void loadPortrait(string filename) {
         beginTiles = endTiles;
         endTiles = buildTiles(filename);
-        
-        // rearrange tiles to match
-        ofLog() << "Computing match between " << beginTiles.size() << " tiles";
-        vector<vector<double>> cost = getCost(beginTiles, endTiles);
-        const vector<int>& assignment = solver.solve(cost);
-        vector<Tile> after;
-        for(int i : assignment) {
-            after.push_back(endTiles[i]);
-        }
-        endTiles = after;
-        
         transitionBegin = ofGetElapsedTimeMillis();
     }
     void updateTransition() {
@@ -319,6 +292,8 @@ public:
         image.cropTo(cropped, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
         cropped.resize(width, height);
         vector<Tile> tiles = Tile::buildTiles(cropped, side);
+        ofSort(tiles, TileCompareBrightness); // sort the target tiles
+        hsbSort(tiles, hsbSortSteps);
         return tiles;
     }
     void setupSource(bool rebuild = false) {
@@ -335,6 +310,8 @@ public:
         }
         ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
+        ofSort(sourceTiles, TileCompareBrightness); // sort the source tiles
+        hsbSort(sourceTiles, hsbSortSteps);
     }
     void update() {
         while(osc.hasWaitingMessages()) {
