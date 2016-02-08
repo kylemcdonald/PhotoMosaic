@@ -10,6 +10,10 @@ public:
     
     template <class S, class D>
     void filter(S& src, D& dst, int size, float contrast = 1) {
+        if(size == 0) {
+            ofxCv::copy(src, dst);
+            return;
+        }
         ofxCv::convertColor(src, lab, CV_RGB2Lab);
         cv::split(lab, labChannels);
         cv::Mat& lightness = labChannels[0];

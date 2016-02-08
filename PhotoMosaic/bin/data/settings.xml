@@ -1,0 +1,21 @@
+<xml>
+	<size>
+		<width>1920</width>
+		<height>1620</height>
+	</size>
+
+	<oscPort>5000</oscPort>
+
+	<highpass>
+		<size>80</size>
+		<contrast>1</contrast>
+	</highpass>
+	
+	<side>15</side>
+	<iterations>1000000</iterations>
+
+	<transitionSeconds>10</transitionSeconds>
+	<onscreenSeconds>20</onscreenSeconds>
+
+	<debugMode>0</debugMode>
+</xml>

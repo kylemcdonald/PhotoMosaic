@@ -1,31 +1,22 @@
 /*
- overall resolution is 1920x1080x6
- 1920x2=3840, 1080x3=3240
- 
- going to guess the right resolution is around 60x60 pixels per tile
- or about 3200 images onscreen at any moment
- 
  todo:
- - run transition with different timings in different areas
- - make sure grid fills non integer sizes
- - run highpass filter on the lightness channel of input image
- - add falling new images
  - update images while running
  - save screenshots
- 
- - debug status info
-  - available and actual resolution
-  - how many images are in use
-  - last time images were updated
-  - network connectivity info
- - debug control panel
- - consider dominant rather than average color?
- - make sure cache is running regularly
  */
 
 #include "ofMain.h"
 #include "ofxOsc.h"
+#include "ofxTiming.h"
 #include "Highpass.h"
+
+int side, width, height;
+float highpassSize, highpassContrast;
+int iterations;
+
+template <class T>
+const T& randomChoice(const vector<T>& x) {
+    return x[ofRandom(x.size())];
+}
 
 float smoothstep(float x) {
     return x*x*(3 - 2*x);
@@ -91,14 +82,12 @@ void popArbTex() {
     arbTex.pop_back();
 }
 
-
 ofPixels buildGrid(string dir, int width, int height, int side) {
     ofFbo buffer;
     
     ofFbo::Settings settings;
     settings.width = width;
     settings.height = height;
-//        settings.numSamples = 1;
     settings.useDepth = false;
     buffer.allocate(settings);
     
@@ -142,39 +131,40 @@ ofColor getAverage(const ofPixels& pix, int x, int y, int w, int h) {
     return ofColor(r / n, g / n, b / n);
 }
 
+const int subsampling = 3;
 class Tile : public ofVec2f {
 public:
     int side;
-    float brightness, hue;
-    ofColor average;
-    Tile(int x, int y, int side, ofColor average)
+    vector<ofColor> grid;
+    float weight;
+    Tile(int x, int y, int side, const vector<ofColor>& grid, float weight)
     :ofVec2f(x, y)
     ,side(side)
-    ,average(average) {
-        brightness = average.getBrightness();
-        hue = average.getHue();
+    ,grid(grid)
+    ,weight(weight) {
     }
     static vector<Tile> buildTiles(const ofPixels& pix, int side) {
+        // we could do this with resizing but OF doesn't have a good downsampling method
+        float subsample = (float) side / subsampling;
         int w = pix.getWidth(), h = pix.getHeight();
         int nx = w / side, ny = h / side;
         vector<Tile> tiles;
-        for(int j = 0; j < h; j+=side) {
-            for(int i = 0; i < w; i+=side) {
-                ofColor avg = getAverage(pix, i, j, side, side);
-                tiles.emplace_back(i, j, side, avg);
+        for(int y = 0; y < h; y+=side) {
+            for(int x = 0; x < w; x+=side) {
+                vector<ofColor> grid;
+                for(int ky = 0; ky < subsampling; ky++) {
+                    for(int kx = 0; kx < subsampling; kx++) {
+                        grid.push_back(getAverage(pix, x+kx*subsample, y+ky*subsample, subsample, subsample));
+                    }
+                }
+                float distance = ofVec2f(x, y).distance(ofVec2f(w, h) / 2);
+                float weight = ofMap(distance, 0, w / 2, 1, 0, true);
+                tiles.emplace_back(x, y, side, grid, weight);
             }
         }
         return tiles;
     }
 };
-
-bool TileCompareBrightness(const Tile& a, const Tile& b) {
-    return a.brightness < b.brightness;
-}
-
-bool TileCompareHue(const Tile& a, const Tile& b) {
-    return a.hue < b.hue;
-}
 
 // lerps along x then along y, linearly
 // a nicer but more complicated implementation would
@@ -195,6 +185,10 @@ ofVec2f manhattanLerp(ofVec2f begin, ofVec2f end, float t) {
     }
 }
 
+ofVec2f euclideanLerp(ofVec2f begin, ofVec2f end, float t) {
+    return begin.interpolate(end, t);
+}
+
 void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
     ofVec2f nwc = tex.getCoordFromPoint(sx, sy), nwp(x,y);
     ofVec2f nec = tex.getCoordFromPoint(sx + w, sy), nep(x + w, y);
@@ -208,93 +202,216 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
     mesh.addTexCoord(swc); mesh.addVertex(swp);
 }
 
-void hsbSort(vector<Tile>& tiles, int steps = 128) {
-    int n = tiles.size();
-    int stepSize = n / steps;
-    for(int i = 0; i < n; i += stepSize) {
-        int end = i + stepSize;
-        end = MIN(end, n);
-        sort(tiles.begin() + i, tiles.begin() + end, TileCompareHue);
-    }
+long getCost(const ofColor& c1, const ofColor& c2) {
+    long rmean = ((long) c1.r + (long) c2.r) / 2;
+    long r = (long) c1.r - (long) c2.r;
+    long g = (long) c1.g - (long) c2.g;
+    long b = (long) c1.b - (long) c2.b;
+    return ((((512 + rmean)*r*r)>>8) + 4*g*g + (((767-rmean)*b*b)>>8));
 }
+
+float getCost(const Tile& a, const Tile& b) {
+    const int n = subsampling * subsampling;
+    float total = 0;
+    for(int i = 0; i < n; i++) {
+        total += getCost(a.grid[i], b.grid[i]);
+    }
+    return total * (a.weight + b.weight);
+}
+
+class Matcher : public ofThread {
+public:
+    Matcher()
+    :ready(false)
+    ,processing(false) {
+        startThread();
+    }
+    ~Matcher() {
+        inputChannel.close();
+        outputChannel.close();
+        waitForThread(true);
+    }
+    void match(const vector<Tile>& source, string target) {
+        inputSource = &source;
+        inputChannel.send(target);
+    }
+    bool update() {
+        ready = false;
+        while(outputChannel.tryReceive(outputData)){
+            ready = true;
+        }
+        return ready;
+    }
+    bool getProcessing() const {
+        return processing;
+    }
+    const vector<Tile>& getOutput() {
+        return outputData;
+    }
+private:
+    bool processing;
+    bool ready;
+    void threadedFunction() {
+        string filename;
+        while(inputChannel.receive(filename)) {
+            processing = true;
+            vector<Tile> data = buildTiles(filename);
+            if(data.size() == 0) {
+                ofLog() << "No tiles, skipping matching process.";
+                continue;
+            }
+            const vector<Tile>& sourceTiles = *inputSource;
+            for(int i = 0; i < iterations; i++) {
+                int a = ofRandom(sourceTiles.size()), b = ofRandom(sourceTiles.size());
+                const Tile& lefta = sourceTiles[a], leftb = sourceTiles[b];
+                const Tile& righta = data[a], rightb = data[b];
+                long sumab = getCost(lefta, righta) + getCost(leftb, rightb);
+                long sumba = getCost(lefta, rightb) + getCost(leftb, righta);
+                if(sumba < sumab) {
+                    swap(data[a], data[b]);
+                }
+            }
+            outputChannel.send(data);
+            processing = false;
+        }
+    }
+    vector<Tile> buildTiles(string filename) {
+        ofPixels image;
+        ofLog() << "Loading image " << filename;
+        if(!ofLoadImage(image, filename)) {
+            ofLogError() << "Error loading image " << filename;
+            return {};
+        }
+        image.setImageType(OF_IMAGE_COLOR);
+        highpass.filter(image, image, highpassSize, highpassContrast);
+        ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
+        ofRectangle targetRect(0, 0, width, height);
+        targetRect.scaleTo(originalRect, OF_SCALEMODE_FIT);
+        ofPixels cropped;
+        image.cropTo(cropped, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
+        cropped.resize(width, height, OF_INTERPOLATE_BICUBIC);
+        vector<Tile> tiles = Tile::buildTiles(cropped, side);
+        return tiles;
+    }
+    
+    Highpass highpass;
+    const vector<Tile>* inputSource;
+    ofThreadChannel<string> inputChannel;
+    ofThreadChannel<vector<Tile>> outputChannel;
+    vector<Tile> outputData;
+};
 
 class ofApp : public ofBaseApp {
 public:
-    int side, width, height;
-    int hsbSortSteps;
-    float transitionSeconds;
-    
-    Highpass highpass;
-    float highpassSize, highpassContrast;
-    
     ofImage source;
     vector<Tile> sourceTiles, beginTiles, endTiles;
-    
+    vector<float> transitionBegin, transitionEnd;
     ofxOscReceiver osc;
-
-    uint64_t transitionBegin;
-    float transition = 0;
+    uint64_t lastReceived = 0;
+    uint64_t lastTransitionStart = 0;
+    uint64_t lastTransitionStop = 0;
+    float transition = 1;
+    Matcher matcher;
+    bool debugMode = true;
+    
+    bool transitionCircle = false;
+    bool transitionManhattan = false;
+    
+    int oscPort;
+    string ipInterface, ipAddress;
+    
+    float transitionSeconds;
+    float onscreenSeconds;
     
     void setup() {
         ofSetBackgroundAuto(false);
         ofSetVerticalSync(true);
+        ofHideCursor();
         
         ofXml xml;
         xml.load("settings.xml");
         side = xml.getIntValue("side");
         width = xml.getIntValue("size/width");
         height = xml.getIntValue("size/height");
+        iterations = xml.getIntValue("iterations");
         highpassSize = xml.getIntValue("highpass/size");
         highpassContrast = xml.getIntValue("highpass/contrast");
-        osc.setup(xml.getIntValue("oscPort"));
-        hsbSortSteps = xml.getFloatValue("hsbSortSteps");
         transitionSeconds = xml.getFloatValue("transitionSeconds");
+        onscreenSeconds = xml.getFloatValue("onscreenSeconds");
+        debugMode = xml.getBoolValue("debugMode");
+        oscPort = xml.getIntValue("oscPort");
+        osc.setup(oscPort);
         
-        ofLog() << "Max texture size: " << getMaxTextureSize();
-        ofLog() << "Side: " << side;
-        ofLog() << "Source size: " << width << "x" << height;
-        ofLog() << "Screen size: " << ofGetScreenWidth() << "x" << ofGetScreenHeight();
+        updateDebugInfo();
         
         setupSource();
         beginTiles = sourceTiles;
         endTiles = sourceTiles;
+        
+        transitionBegin = vector<float>(sourceTiles.size(), 0);
+        transitionEnd = vector<float>(sourceTiles.size(), 1);
     }
     void keyPressed(int key) {
         switch (key) {
             case 'a': loadPortrait("a.jpg"); break;
             case 'b': loadPortrait("b.jpg"); break;
             case 'c': loadPortrait("c.jpg"); break;
+            case 'd': debugMode = !debugMode; break;
             case 'f': ofToggleFullscreen(); break;
+            case '0': randomPortrait(); break;
+            case '2': transitionCircle = !transitionCircle; break;
+            case '3': transitionManhattan = !transitionManhattan; break;
         }
     }
+    void randomPortrait() {
+        loadPortrait(randomChoice(listImages("db")).path());
+    }
     void loadPortrait(string filename) {
-        beginTiles = endTiles;
-        endTiles = buildTiles(filename);
-        transitionBegin = ofGetElapsedTimeMillis();
+        lastReceived = ofGetElapsedTimeMillis();
+        matcher.match(sourceTiles, filename);
+    }
+    void updateDebugInfo() {
+        ipInterface = ofTrim(ofSystem("route -n get 0.0.0.0 2>/dev/null | awk '/interface: / {print $2}'"));
+        if(ipInterface == "") {
+            ipAddress = "[no connection]";
+            ipInterface = "[no interface]";
+        } else {
+            ipAddress = ofTrim(ofSystem("ipconfig getifaddr " + ipInterface));
+        }
     }
     void updateTransition() {
-        uint64_t transitionState = ofGetElapsedTimeMillis() - transitionBegin;
+        if(matcher.update()) {
+            beginTiles = endTiles;
+            endTiles = matcher.getOutput();
+            lastTransitionStart = ofGetElapsedTimeMillis();
+            
+            ofVec2f center = ofVec2f(width, height) / 2;
+            float diagonal = sqrt(width*width + height*height) / 2;
+//            transitionCircle = ofRandomuf() < .5;
+//            transitionManhattan = ofRandomuf() < .5;
+            for(int i = 0; i < sourceTiles.size(); i++) {
+                Tile& cur = endTiles[i];
+                float begin;
+                if(transitionCircle) {
+                    begin = ofMap(cur.y, 0, height, 0, .75);
+                } else {
+                    begin = ofMap(cur.y, height, 0, 0, .75);
+//                    begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
+                }
+                float end = begin + .25;
+                transitionBegin[i] = begin;
+                transitionEnd[i] = MIN(end, 1);
+            }
+        }
+        
+        float transitionPrev = transition;
+        uint64_t transitionState = ofGetElapsedTimeMillis() - lastTransitionStart;
         transition = transitionState / (1000 * transitionSeconds);
         transition = MIN(transition, 1);
         transition = MAX(transition, 0);
-    }
-    vector<Tile> buildTiles(string filename) {
-        ofPixels original;
-        ofLoadImage(original, filename);
-        highpass.filter(original, original, highpassSize, highpassContrast);
-        return buildTiles(original);
-    }
-    vector<Tile> buildTiles(ofPixels& image) {
-        ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
-        ofRectangle targetRect(0, 0, width, height);
-        targetRect.scaleTo(originalRect, OF_SCALEMODE_FIT);
-        ofPixels cropped;
-        image.cropTo(cropped, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
-        cropped.resize(width, height);
-        vector<Tile> tiles = Tile::buildTiles(cropped, side);
-        ofSort(tiles, TileCompareBrightness); // sort the target tiles
-        hsbSort(tiles, hsbSortSteps);
-        return tiles;
+        if(transition == 1 && transitionPrev < 1) {
+            lastTransitionStop = ofGetElapsedTimeMillis();
+        }
     }
     void setupSource(bool rebuild = false) {
         ofFile sourceFile("source.tiff");
@@ -310,36 +427,71 @@ public:
         }
         ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
-        ofSort(sourceTiles, TileCompareBrightness); // sort the source tiles
-        hsbSort(sourceTiles, hsbSortSteps);
+    }
+    bool readyForTransition() {
+        // ready for transition as long as it's not that case:
+        // 1. matcher is processing
+        // 2. transition is in progress
+        return !(matcher.getProcessing() || transition < 1);
     }
     void update() {
-        while(osc.hasWaitingMessages()) {
-            ofxOscMessage msg;
-            osc.getNextMessage(msg);
-            string filename = msg.getArgAsString(0);
-            ofLog() << filename;
-            loadPortrait(filename);
+        // only pull osc or random users when we're ready
+        if(readyForTransition()) {
+            while(osc.hasWaitingMessages()) {
+                ofxOscMessage msg;
+                osc.getNextMessage(msg);
+                string filename = msg.getArgAsString(0);
+                loadPortrait(filename);
+            }
+            if(ofGetElapsedTimeMillis() - lastTransitionStop > onscreenSeconds * 1000) {
+                randomPortrait();
+            }
         }
         updateTransition();
     }
+    void drawDebug() {
+        ofPushMatrix();
+        ofTranslate(ofGetWidth() / 2, ofGetHeight() / 2);
+        ofDrawBitmapStringHighlight(ipAddress + ":" + ofToString(oscPort) + " on " + ipInterface, 0, 0);
+        ofDrawBitmapStringHighlight("Screen size: " + ofToString(ofGetScreenWidth()) + "x" + ofToString(ofGetScreenHeight()), 0, 20);
+        ofDrawBitmapStringHighlight("Display size: " + ofToString(ofGetWidth()) + "x" + ofToString(ofGetHeight()), 0, 40);
+        ofDrawBitmapStringHighlight("Source size: " + ofToString(width) + "x" + ofToString(height), 0, 60);
+        ofDrawBitmapStringHighlight("Max texture size: " + ofToString(getMaxTextureSize()), 0, 80);
+        ofDrawBitmapStringHighlight("Side: " + ofToString(side), 0, 100);
+        ofDrawBitmapStringHighlight(ofToString((int) (ofGetFrameRate() + .5)) + "fps", 0, 120);
+        string timeSinceReceived = ofToString((ofGetElapsedTimeMillis() - lastReceived) / 1000., 2);
+        string timeSinceTransitionStart = ofToString((ofGetElapsedTimeMillis() - lastTransitionStart) / 1000., 2);
+        string timeSinceTransitionStop = ofToString((ofGetElapsedTimeMillis() - lastTransitionStop) / 1000., 2);
+        ofDrawBitmapStringHighlight("Last received: " + timeSinceReceived + "s", 0, 140);
+        ofDrawBitmapStringHighlight("Last transition start: " + timeSinceTransitionStart + "s", 0, 160);
+        ofDrawBitmapStringHighlight("Last transition stop: " + timeSinceTransitionStop + "s", 0, 180);
+        ofDrawBitmapStringHighlight("Transition: " + ofToString(int(transition * 100)) + "%", 0, 200);
+        string ready = "Ready: ";
+        ready += readyForTransition() ? "yes" : "no";
+        ofDrawBitmapStringHighlight(ready, 0, 220);
+        ofPopMatrix();
+    }
     void draw() {
-        float t = smoothstep(transition);
         int n = sourceTiles.size();
         ofMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
         for(int i = 0; i < n; i++) {
             Tile& begin = beginTiles[i];
             Tile& end = endTiles[i];
-            ofVec2f lerp = manhattanLerp(begin, end, t);
+            float t = ofMap(transition, transitionBegin[i], transitionEnd[i], 0, 1, true);
+            ofVec2f lerp = transitionManhattan ?
+                manhattanLerp(begin, end, smoothstep(t)) :
+                euclideanLerp(begin, end, smoothstep(t));
             Tile& s = sourceTiles[i];
             addSubsection(mesh, source.getTexture(), lerp.x, lerp.y, side, side, s.x, s.y);
         }
-        // to get this on multiple screens we can setup multiple viewports
-        // or render to a big FBO then push parts to each screen
         source.bind();
         mesh.drawFaces();
         source.unbind();
+        
+        if(debugMode) {
+            drawDebug();
+        }
     }
 };
 
