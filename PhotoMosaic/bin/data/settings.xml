@@ -17,5 +17,7 @@
 	<transitionSeconds>10</transitionSeconds>
 	<onscreenSeconds>20</onscreenSeconds>
 
+	<screenshotFormat>jpg</screenshotFormat>
+
 	<debugMode>0</debugMode>
 </xml>

@@ -1,1 +1,4 @@
+ofxCv
+ofxOpenCv
 ofxOsc
+ofxTiming

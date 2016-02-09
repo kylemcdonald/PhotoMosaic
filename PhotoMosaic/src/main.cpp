@@ -33,7 +33,9 @@ vector<ofFile> listImages(string directory) {
     dir.allowExt("jpg");
     dir.allowExt("jpeg");
     dir.allowExt("png");
-    return dir.getFiles();
+    vector<ofFile> files = dir.getFiles();
+    ofLog() << "Listed " << files.size() << " files.";
+    return files;
 }
 
 ofRectangle getCenterRectangle(const ofImage& img) {
@@ -226,7 +228,7 @@ public:
     ,processing(false) {
         startThread();
     }
-    ~Matcher() {
+    void close() {
         inputChannel.close();
         outputChannel.close();
         waitForThread(true);
@@ -313,6 +315,8 @@ public:
     float transition = 1;
     Matcher matcher;
     bool debugMode = true;
+    bool manualTransition = false;
+    bool transitionInProcess = false;
     
     bool transitionCircle = false;
     bool transitionManhattan = false;
@@ -322,6 +326,8 @@ public:
     
     float transitionSeconds;
     float onscreenSeconds;
+    
+    string screenshotFormat;
     
     void setup() {
         ofSetBackgroundAuto(false);
@@ -338,6 +344,7 @@ public:
         highpassContrast = xml.getIntValue("highpass/contrast");
         transitionSeconds = xml.getFloatValue("transitionSeconds");
         onscreenSeconds = xml.getFloatValue("onscreenSeconds");
+        screenshotFormat = xml.getValue("screenshotFormat");
         debugMode = xml.getBoolValue("debugMode");
         oscPort = xml.getIntValue("oscPort");
         osc.setup(oscPort);
@@ -350,6 +357,10 @@ public:
         
         transitionBegin = vector<float>(sourceTiles.size(), 0);
         transitionEnd = vector<float>(sourceTiles.size(), 1);
+    }
+    void exit() {
+        ofLog() << "Shutting down.";
+        matcher.close();
     }
     void keyPressed(int key) {
         switch (key) {
@@ -366,7 +377,9 @@ public:
     void randomPortrait() {
         loadPortrait(randomChoice(listImages("db")).path());
     }
-    void loadPortrait(string filename) {
+    void loadPortrait(string filename, bool manual = false) {
+        transitionInProcess = true;
+        manualTransition = manual;
         lastReceived = ofGetElapsedTimeMillis();
         matcher.match(sourceTiles, filename);
     }
@@ -411,6 +424,13 @@ public:
         transition = MAX(transition, 0);
         if(transition == 1 && transitionPrev < 1) {
             lastTransitionStop = ofGetElapsedTimeMillis();
+            transitionFinished();
+            transitionInProcess = false;
+        }
+    }
+    void transitionFinished() {
+        if(screenshotFormat != "" && manualTransition) {
+            ofSaveScreen("screenshots/" + ofGetTimestampString() + "." + screenshotFormat);
         }
     }
     void setupSource(bool rebuild = false) {
@@ -428,20 +448,13 @@ public:
         ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
     }
-    bool readyForTransition() {
-        // ready for transition as long as it's not that case:
-        // 1. matcher is processing
-        // 2. transition is in progress
-        return !(matcher.getProcessing() || transition < 1);
-    }
     void update() {
-        // only pull osc or random users when we're ready
-        if(readyForTransition()) {
+        if(!transitionInProcess) {
             while(osc.hasWaitingMessages()) {
                 ofxOscMessage msg;
                 osc.getNextMessage(msg);
                 string filename = msg.getArgAsString(0);
-                loadPortrait(filename);
+                loadPortrait(filename, true);
             }
             if(ofGetElapsedTimeMillis() - lastTransitionStop > onscreenSeconds * 1000) {
                 randomPortrait();
@@ -466,8 +479,8 @@ public:
         ofDrawBitmapStringHighlight("Last transition start: " + timeSinceTransitionStart + "s", 0, 160);
         ofDrawBitmapStringHighlight("Last transition stop: " + timeSinceTransitionStop + "s", 0, 180);
         ofDrawBitmapStringHighlight("Transition: " + ofToString(int(transition * 100)) + "%", 0, 200);
-        string ready = "Ready: ";
-        ready += readyForTransition() ? "yes" : "no";
+        string ready = "Transition in process: ";
+        ready += transitionInProcess ? "yes" : "no";
         ofDrawBitmapStringHighlight(ready, 0, 220);
         ofPopMatrix();
     }
