@@ -34,7 +34,7 @@ vector<ofFile> listImages(string directory) {
     dir.allowExt("jpeg");
     dir.allowExt("png");
     vector<ofFile> files = dir.getFiles();
-    ofLog() << "Listed " << files.size() << " files.";
+    ofLog() << "Listed " << files.size() << " files in " << directory << ".";
     return files;
 }
 
@@ -85,6 +85,8 @@ void popArbTex() {
 }
 
 ofPixels buildGrid(string dir, int width, int height, int side) {
+    auto files = listImages(dir);
+    
     ofFbo buffer;
     
     ofFbo::Settings settings;
@@ -98,9 +100,7 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     ofImage img;
     img.getTexture().enableMipmap();
     buffer.begin();
-    auto files = listImages(dir);
     auto filesitr = files.begin();
-    ofImage small;
     for(auto& position : getGrid(width, height, side)) {
         int x = position.first;
         int y = position.second;
@@ -109,6 +109,47 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
         filesitr++;
         if(filesitr == files.end()) {
             filesitr = files.begin();
+        }
+    }
+    buffer.end();
+    popArbTex();
+    
+    ofPixels out;
+    buffer.readToPixels(out);
+    return out;
+}
+
+ofPixels addToGrid(const ofImage& src, string dir, int width, int height, int side) {
+    auto files = listImages(dir);
+    if(files.empty()) {
+        return src.getPixels();
+    }
+    
+    ofFbo buffer;
+    
+    ofFbo::Settings settings;
+    settings.width = width;
+    settings.height = height;
+    settings.useDepth = false;
+    buffer.allocate(settings);
+    
+    pushArbTex();
+    ofDisableArbTex();
+    ofImage img;
+    img.getTexture().enableMipmap();
+    buffer.begin();
+    src.draw(0, 0);
+    auto filesitr = files.begin();
+    auto positions = getGrid(width, height, side);
+    ofRandomize(positions);
+    for(auto& position : positions) {
+        int x = position.first;
+        int y = position.second;
+        img.load(*filesitr);
+        drawCenterSquare(img, x, y, side, side);
+        filesitr++;
+        if(filesitr == files.end()) {
+            break;
         }
     }
     buffer.end();
@@ -225,6 +266,7 @@ class Matcher : public ofThread {
 public:
     Matcher()
     :ready(false)
+    ,saveImage(false)
     ,processing(false) {
         startThread();
     }
@@ -233,8 +275,9 @@ public:
         outputChannel.close();
         waitForThread(true);
     }
-    void match(const vector<Tile>& source, string target) {
-        inputSource = &source;
+    void match(const vector<Tile>& inputSource, string target, bool saveImage=false) {
+        this->inputSource = &inputSource;
+        this->saveImage = saveImage;
         inputChannel.send(target);
     }
     bool update() {
@@ -285,6 +328,9 @@ private:
             return {};
         }
         image.setImageType(OF_IMAGE_COLOR);
+        if(saveImage) {
+            ofSaveImage(image, "portraits/" + ofGetTimestampString() + ".jpg");
+        }
         highpass.filter(image, image, highpassSize, highpassContrast);
         ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
         ofRectangle targetRect(0, 0, width, height);
@@ -297,11 +343,27 @@ private:
     }
     
     Highpass highpass;
+    bool saveImage;
     const vector<Tile>* inputSource;
     ofThreadChannel<string> inputChannel;
     ofThreadChannel<vector<Tile>> outputChannel;
     vector<Tile> outputData;
 };
+
+void deleteOld(string path, int minutes=1440) {
+    path = ofToDataPath(path);
+    string cmd = "find " + path + " -name '*.jpg' -mmin +" + ofToString(minutes) + " -delete";
+    ofLog() << cmd;
+    ofLog() << "> " << ofSystem(cmd);
+}
+
+void copyFiles(string from, string to) {
+    from = ofToDataPath(from);
+    to = ofToDataPath(to);
+    string cmd = "rsync " + from + "/* " + to + "/";
+    ofLog() << cmd;
+    ofLog() << "> " << ofSystem(cmd);
+}
 
 class ofApp : public ofBaseApp {
 public:
@@ -334,6 +396,9 @@ public:
         ofSetVerticalSync(true);
         ofHideCursor();
         
+        deleteOld("portraits");
+        copyFiles("persistent", "portraits");
+        
         ofXml xml;
         xml.load("settings.xml");
         side = xml.getIntValue("side");
@@ -364,24 +429,26 @@ public:
     }
     void keyPressed(int key) {
         switch (key) {
-            case 'a': loadPortrait("a.jpg"); break;
-            case 'b': loadPortrait("b.jpg"); break;
-            case 'c': loadPortrait("c.jpg"); break;
+//            case 'a': loadPortrait("a.jpg"); break;
+//            case 'b': loadPortrait("b.jpg"); break;
+//            case 'c': loadPortrait("c.jpg"); break;
             case 'd': debugMode = !debugMode; break;
             case 'f': ofToggleFullscreen(); break;
             case '0': randomPortrait(); break;
-            case '2': transitionCircle = !transitionCircle; break;
-            case '3': transitionManhattan = !transitionManhattan; break;
+//            case '2': transitionCircle = !transitionCircle; break;
+//            case '3': transitionManhattan = !transitionManhattan; break;
         }
     }
     void randomPortrait() {
-        loadPortrait(randomChoice(listImages("db")).path());
+        if(!transitionInProcess) {
+            loadPortrait(randomChoice(listImages("portraits")).path());
+        }
     }
     void loadPortrait(string filename, bool manual = false) {
         transitionInProcess = true;
         manualTransition = manual;
         lastReceived = ofGetElapsedTimeMillis();
-        matcher.match(sourceTiles, filename);
+        matcher.match(sourceTiles, filename, manualTransition);
     }
     void updateDebugInfo() {
         ipInterface = ofTrim(ofSystem("route -n get 0.0.0.0 2>/dev/null | awk '/interface: / {print $2}'"));
@@ -442,9 +509,11 @@ public:
         } else {
             ofLog() << "Rebuilding source.";
             source = ofImage(buildGrid("db", width, height, side));
-            source.save(sourceFile);
             ofLog() << "Rebuilt source.";
         }
+        source = ofImage(addToGrid(source, "upcoming", width, height, side));
+        deleteOld("upcoming", 0);
+        source.save(sourceFile);
         ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
     }
