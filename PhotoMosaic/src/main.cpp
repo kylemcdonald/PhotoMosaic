@@ -305,17 +305,17 @@ private:
             vector<Tile> data = buildTiles(filename);
             if(data.size() == 0) {
                 ofLog() << "No tiles, skipping matching process.";
-                continue;
-            }
-            const vector<Tile>& sourceTiles = *inputSource;
-            for(int i = 0; i < iterations; i++) {
-                int a = ofRandom(sourceTiles.size()), b = ofRandom(sourceTiles.size());
-                const Tile& lefta = sourceTiles[a], leftb = sourceTiles[b];
-                const Tile& righta = data[a], rightb = data[b];
-                long sumab = getCost(lefta, righta) + getCost(leftb, rightb);
-                long sumba = getCost(lefta, rightb) + getCost(leftb, righta);
-                if(sumba < sumab) {
-                    swap(data[a], data[b]);
+            } else {
+                const vector<Tile>& sourceTiles = *inputSource;
+                for(int i = 0; i < iterations; i++) {
+                    int a = ofRandom(sourceTiles.size()), b = ofRandom(sourceTiles.size());
+                    const Tile& lefta = sourceTiles[a], leftb = sourceTiles[b];
+                    const Tile& righta = data[a], rightb = data[b];
+                    long sumab = getCost(lefta, righta) + getCost(leftb, rightb);
+                    long sumba = getCost(lefta, rightb) + getCost(leftb, righta);
+                    if(sumba < sumab) {
+                        swap(data[a], data[b]);
+                    }
                 }
             }
             outputChannel.send(data);
@@ -466,24 +466,29 @@ public:
         if(matcher.update()) {
             beginTiles = endTiles;
             endTiles = matcher.getOutput();
-            lastTransitionStart = ofGetElapsedTimeMillis();
-            
-            ofVec2f center = ofVec2f(width, height) / 2;
-            float diagonal = sqrt(width*width + height*height) / 2;
-//            transitionCircle = ofRandomuf() < .5;
-//            transitionManhattan = ofRandomuf() < .5;
-            for(int i = 0; i < sourceTiles.size(); i++) {
-                Tile& cur = endTiles[i];
-                float begin;
-                if(transitionCircle) {
-                    begin = ofMap(cur.y, 0, height, 0, .75);
-                } else {
-                    begin = ofMap(cur.y, height, 0, 0, .75);
-//                    begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
+            if(endTiles.size() == 0) {
+                ofLog() << "No tiles, skipping transition.";
+                transitionInProcess = false;
+            } else {
+                lastTransitionStart = ofGetElapsedTimeMillis();
+                
+                ofVec2f center = ofVec2f(width, height) / 2;
+                float diagonal = sqrt(width*width + height*height) / 2;
+    //            transitionCircle = ofRandomuf() < .5;
+    //            transitionManhattan = ofRandomuf() < .5;
+                for(int i = 0; i < sourceTiles.size(); i++) {
+                    Tile& cur = endTiles[i];
+                    float begin;
+                    if(transitionCircle) {
+                        begin = ofMap(cur.y, 0, height, 0, .75);
+                    } else {
+                        begin = ofMap(cur.y, height, 0, 0, .75);
+    //                    begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
+                    }
+                    float end = begin + .25;
+                    transitionBegin[i] = begin;
+                    transitionEnd[i] = MIN(end, 1);
                 }
-                float end = begin + .25;
-                transitionBegin[i] = begin;
-                transitionEnd[i] = MIN(end, 1);
             }
         }
         
