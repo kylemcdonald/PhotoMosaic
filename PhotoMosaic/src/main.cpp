@@ -104,8 +104,9 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     for(auto& position : getGrid(width, height, side)) {
         int x = position.first;
         int y = position.second;
-        img.load(*filesitr);
-        drawCenterSquare(img, x, y, side, side);
+        if(img.load(*filesitr)) {
+            drawCenterSquare(img, x, y, side, side);
+        }
         filesitr++;
         if(filesitr == files.end()) {
             filesitr = files.begin();
@@ -145,8 +146,9 @@ ofPixels addToGrid(const ofImage& src, string dir, int width, int height, int si
     for(auto& position : positions) {
         int x = position.first;
         int y = position.second;
-        img.load(*filesitr);
-        drawCenterSquare(img, x, y, side, side);
+        if(img.load(*filesitr)) {
+            drawCenterSquare(img, x, y, side, side);
+        }
         filesitr++;
         if(filesitr == files.end()) {
             break;
@@ -396,7 +398,8 @@ public:
         ofSetVerticalSync(true);
         ofHideCursor();
         
-        deleteOld("portraits");
+        deleteOld("screenshots");
+        deleteOld("portraits", 0);
         copyFiles("persistent", "portraits");
         
         ofXml xml;
