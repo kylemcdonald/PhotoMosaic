@@ -20,4 +20,7 @@
 	<screenshotFormat>jpg</screenshotFormat>
 
 	<debugMode>0</debugMode>
+
+	<allowTransitionCircle>1</allowTransitionCircle>
+	<allowTransitionManhattan>1</allowTransitionManhattan>
 </xml>

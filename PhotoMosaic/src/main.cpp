@@ -382,6 +382,8 @@ public:
     bool manualTransition = false;
     bool transitionInProcess = false;
     
+    bool allowTransitionCircle = false;
+    bool allowTransitionManhattan = false;
     bool transitionCircle = false;
     bool transitionManhattan = false;
     
@@ -414,6 +416,8 @@ public:
         onscreenSeconds = xml.getFloatValue("onscreenSeconds");
         screenshotFormat = xml.getValue("screenshotFormat");
         debugMode = xml.getBoolValue("debugMode");
+        allowTransitionCircle = xml.getBoolValue("allowTransitionCircle");
+        allowTransitionManhattan = xml.getBoolValue("allowTransitionManhattan");
         oscPort = xml.getIntValue("oscPort");
         osc.setup(oscPort);
         
@@ -474,16 +478,20 @@ public:
                 
                 ofVec2f center = ofVec2f(width, height) / 2;
                 float diagonal = sqrt(width*width + height*height) / 2;
-    //            transitionCircle = ofRandomuf() < .5;
-    //            transitionManhattan = ofRandomuf() < .5;
+                bool topDown = ofRandomuf() < .5;
+                transitionCircle = allowTransitionCircle && ofRandomuf() < .5;
+                transitionManhattan = allowTransitionManhattan && ofRandomuf() < .5;
                 for(int i = 0; i < sourceTiles.size(); i++) {
                     Tile& cur = endTiles[i];
                     float begin;
                     if(transitionCircle) {
-                        begin = ofMap(cur.y, 0, height, 0, .75);
+                        begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
                     } else {
-                        begin = ofMap(cur.y, height, 0, 0, .75);
-    //                    begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
+                        if(topDown) {
+                            begin = ofMap(cur.y, 0, height, 0, .75);
+                        } else {
+                            begin = ofMap(cur.y, height, 0, 0, .75);
+                        }
                     }
                     float end = begin + .25;
                     transitionBegin[i] = begin;
