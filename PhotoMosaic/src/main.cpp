@@ -1,13 +1,8 @@
-/*
- todo:
- - update images while running
- - save screenshots
- */
-
 #include "ofMain.h"
-#include "ofxOsc.h"
 #include "ofxTiming.h"
 #include "Highpass.h"
+
+//using namespace glm;
 
 int side, width, height;
 float highpassSize, highpassContrast;
@@ -20,12 +15,6 @@ const T& randomChoice(const vector<T>& x) {
 
 float smoothstep(float x) {
     return x*x*(3 - 2*x);
-}
-
-int getMaxTextureSize() {
-    GLint max[2];
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, max);
-    return max[0];
 }
 
 vector<ofFile> listImages(string directory) {
@@ -100,11 +89,12 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     ofImage img;
     img.getTexture().enableMipmap();
     buffer.begin();
+    ofClear(255, 255, 255, 255);
     auto filesitr = files.begin();
     for(auto& position : getGrid(width, height, side)) {
         int x = position.first;
         int y = position.second;
-        if(img.load(*filesitr)) {
+        if(img.load(filesitr->path())) {
             drawCenterSquare(img, x, y, side, side);
         }
         filesitr++;
@@ -139,6 +129,7 @@ ofPixels addToGrid(const ofImage& src, string dir, int width, int height, int si
     ofImage img;
     img.getTexture().enableMipmap();
     buffer.begin();
+    ofClear(255, 255, 255, 255);
     src.draw(0, 0);
     auto filesitr = files.begin();
     auto positions = getGrid(width, height, side);
@@ -146,7 +137,7 @@ ofPixels addToGrid(const ofImage& src, string dir, int width, int height, int si
     for(auto& position : positions) {
         int x = position.first;
         int y = position.second;
-        if(img.load(*filesitr)) {
+        if(img.load(filesitr->path())) {
             drawCenterSquare(img, x, y, side, side);
         }
         filesitr++;
@@ -202,7 +193,7 @@ public:
                         grid.push_back(getAverage(pix, x+kx*subsample, y+ky*subsample, subsample, subsample));
                     }
                 }
-                float distance = ofVec2f(x, y).distance(ofVec2f(w, h) / 2);
+                float distance = ofVec2f(x, y).distance(ofVec2f(w, h) * 0.5);
                 float weight = ofMap(distance, 0, w / 2, 1, 0, true);
                 tiles.emplace_back(x, y, side, grid, weight);
             }
@@ -235,16 +226,29 @@ ofVec2f euclideanLerp(ofVec2f begin, ofVec2f end, float t) {
 }
 
 void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
-    ofVec2f nwc = tex.getCoordFromPoint(sx, sy), nwp(x,y);
-    ofVec2f nec = tex.getCoordFromPoint(sx + w, sy), nep(x + w, y);
-    ofVec2f sec = tex.getCoordFromPoint(sx + w, sy + h), sep(x + w, y + h);
-    ofVec2f swc = tex.getCoordFromPoint(sx, sy + h), swp(x, y + h);
-    mesh.addTexCoord(nwc); mesh.addVertex(nwp);
-    mesh.addTexCoord(nec); mesh.addVertex(nep);
-    mesh.addTexCoord(swc); mesh.addVertex(swp);
-    mesh.addTexCoord(nec); mesh.addVertex(nep);
-    mesh.addTexCoord(sec); mesh.addVertex(sep);
-    mesh.addTexCoord(swc); mesh.addVertex(swp);
+    ofVec2f nwc = tex.getCoordFromPoint(sx, sy);
+    ofVec2f nec = tex.getCoordFromPoint(sx + w, sy);
+    ofVec2f sec = tex.getCoordFromPoint(sx + w, sy + h);
+    ofVec2f swc = tex.getCoordFromPoint(sx, sy + h);
+    
+    mesh.addTexCoord(nwc);
+    mesh.addTexCoord(nec);
+    mesh.addTexCoord(swc);
+    mesh.addTexCoord(nec);
+    mesh.addTexCoord(sec);
+    mesh.addTexCoord(swc);
+    
+    glm::vec3 nwp(x, y, 0);
+    glm::vec3 nep(x + w, y, 0);
+    glm::vec3 sep(x + w, y + h, 0);
+    glm::vec3 swp(x, y + h, 0);
+    
+    mesh.addVertex(nwp);
+    mesh.addVertex(nep);
+    mesh.addVertex(swp);
+    mesh.addVertex(nep);
+    mesh.addVertex(sep);
+    mesh.addVertex(swp);
 }
 
 long getCost(const ofColor& c1, const ofColor& c2) {
@@ -352,43 +356,22 @@ private:
     vector<Tile> outputData;
 };
 
-void deleteOld(string path, int minutes=1440) {
-    path = ofToDataPath(path);
-    string cmd = "find " + path + " -name '*.jpg' -mmin +" + ofToString(minutes) + " -delete";
-    ofLog() << cmd;
-    ofLog() << "> " << ofSystem(cmd);
-}
-
-void copyFiles(string from, string to) {
-    from = ofToDataPath(from);
-    to = ofToDataPath(to);
-    string cmd = "rsync " + from + "/* " + to + "/";
-    ofLog() << cmd;
-    ofLog() << "> " << ofSystem(cmd);
-}
-
 class ofApp : public ofBaseApp {
 public:
     ofImage source;
     vector<Tile> sourceTiles, beginTiles, endTiles;
     vector<float> transitionBegin, transitionEnd;
-    ofxOscReceiver osc;
     uint64_t lastReceived = 0;
     uint64_t lastTransitionStart = 0;
     uint64_t lastTransitionStop = 0;
     float transition = 1;
     Matcher matcher;
-    bool debugMode = true;
-    bool manualTransition = false;
     bool transitionInProcess = false;
     
-    bool allowTransitionCircle = false;
-    bool allowTransitionManhattan = false;
+    bool allowTransitionCircle = true;
+    bool allowTransitionManhattan = true;
     bool transitionCircle = false;
     bool transitionManhattan = false;
-    
-    int oscPort;
-    string ipInterface, ipAddress;
     
     float transitionSeconds;
     float onscreenSeconds;
@@ -400,28 +383,14 @@ public:
         ofSetVerticalSync(true);
         ofHideCursor();
         
-        deleteOld("screenshots");
-        deleteOld("portraits", 0);
-        copyFiles("persistent", "portraits");
-        
-        ofXml xml;
-        xml.load("settings.xml");
-        side = xml.getIntValue("side");
-        width = xml.getIntValue("size/width");
-        height = xml.getIntValue("size/height");
-        iterations = xml.getIntValue("iterations");
-        highpassSize = xml.getIntValue("highpass/size");
-        highpassContrast = xml.getIntValue("highpass/contrast");
-        transitionSeconds = xml.getFloatValue("transitionSeconds");
-        onscreenSeconds = xml.getFloatValue("onscreenSeconds");
-        screenshotFormat = xml.getValue("screenshotFormat");
-        debugMode = xml.getBoolValue("debugMode");
-        allowTransitionCircle = xml.getBoolValue("allowTransitionCircle");
-        allowTransitionManhattan = xml.getBoolValue("allowTransitionManhattan");
-        oscPort = xml.getIntValue("oscPort");
-        osc.setup(oscPort);
-        
-        updateDebugInfo();
+        side = 30;
+        width = ofGetWidth();
+        height = ofGetHeight();
+        iterations = 100000;
+        highpassSize = 250;
+        highpassContrast = 20;
+        transitionSeconds = 1;
+        onscreenSeconds = 10;
         
         setupSource();
         beginTiles = sourceTiles;
@@ -439,7 +408,6 @@ public:
 //            case 'a': loadPortrait("a.jpg"); break;
 //            case 'b': loadPortrait("b.jpg"); break;
 //            case 'c': loadPortrait("c.jpg"); break;
-            case 'd': debugMode = !debugMode; break;
             case 'f': ofToggleFullscreen(); break;
             case '0': randomPortrait(); break;
 //            case '2': transitionCircle = !transitionCircle; break;
@@ -451,20 +419,10 @@ public:
             loadPortrait(randomChoice(listImages("portraits")).path());
         }
     }
-    void loadPortrait(string filename, bool manual = false) {
+    void loadPortrait(string filename) {
         transitionInProcess = true;
-        manualTransition = manual;
         lastReceived = ofGetElapsedTimeMillis();
-        matcher.match(sourceTiles, filename, manualTransition);
-    }
-    void updateDebugInfo() {
-        ipInterface = ofTrim(ofSystem("route -n get 0.0.0.0 2>/dev/null | awk '/interface: / {print $2}'"));
-        if(ipInterface == "") {
-            ipAddress = "[no connection]";
-            ipInterface = "[no interface]";
-        } else {
-            ipAddress = ofTrim(ofSystem("ipconfig getifaddr " + ipInterface));
-        }
+        matcher.match(sourceTiles, filename);
     }
     void updateTransition() {
         if(matcher.update()) {
@@ -512,62 +470,31 @@ public:
         }
     }
     void transitionFinished() {
-        if(screenshotFormat != "" && manualTransition) {
-            ofSaveScreen("screenshots/" + ofGetTimestampString() + "." + screenshotFormat);
-        }
+        
     }
     void setupSource(bool rebuild = false) {
         ofFile sourceFile("source.tiff");
         if(sourceFile.exists() && !rebuild) {
             ofLog() << "Loading source.";
-            source.load(sourceFile);
+            source.load(sourceFile.path());
             ofLog() << "Loaded source.";
         } else {
             ofLog() << "Rebuilding source.";
             source = ofImage(buildGrid("db", width, height, side));
             ofLog() << "Rebuilt source.";
         }
-        source = ofImage(addToGrid(source, "upcoming", width, height, side));
-        deleteOld("upcoming", 0);
+        // source = ofImage(addToGrid(source, "upcoming", width, height, side));
         source.save(sourceFile);
         ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
     }
     void update() {
         if(!transitionInProcess) {
-            while(osc.hasWaitingMessages()) {
-                ofxOscMessage msg;
-                osc.getNextMessage(msg);
-                string filename = msg.getArgAsString(0);
-                loadPortrait(filename, true);
-            }
             if(ofGetElapsedTimeMillis() - lastTransitionStop > onscreenSeconds * 1000) {
                 randomPortrait();
             }
         }
         updateTransition();
-    }
-    void drawDebug() {
-        ofPushMatrix();
-        ofTranslate(ofGetWidth() / 2, ofGetHeight() / 2);
-        ofDrawBitmapStringHighlight(ipAddress + ":" + ofToString(oscPort) + " on " + ipInterface, 0, 0);
-        ofDrawBitmapStringHighlight("Screen size: " + ofToString(ofGetScreenWidth()) + "x" + ofToString(ofGetScreenHeight()), 0, 20);
-        ofDrawBitmapStringHighlight("Display size: " + ofToString(ofGetWidth()) + "x" + ofToString(ofGetHeight()), 0, 40);
-        ofDrawBitmapStringHighlight("Source size: " + ofToString(width) + "x" + ofToString(height), 0, 60);
-        ofDrawBitmapStringHighlight("Max texture size: " + ofToString(getMaxTextureSize()), 0, 80);
-        ofDrawBitmapStringHighlight("Side: " + ofToString(side), 0, 100);
-        ofDrawBitmapStringHighlight(ofToString((int) (ofGetFrameRate() + .5)) + "fps", 0, 120);
-        string timeSinceReceived = ofToString((ofGetElapsedTimeMillis() - lastReceived) / 1000., 2);
-        string timeSinceTransitionStart = ofToString((ofGetElapsedTimeMillis() - lastTransitionStart) / 1000., 2);
-        string timeSinceTransitionStop = ofToString((ofGetElapsedTimeMillis() - lastTransitionStop) / 1000., 2);
-        ofDrawBitmapStringHighlight("Last received: " + timeSinceReceived + "s", 0, 140);
-        ofDrawBitmapStringHighlight("Last transition start: " + timeSinceTransitionStart + "s", 0, 160);
-        ofDrawBitmapStringHighlight("Last transition stop: " + timeSinceTransitionStop + "s", 0, 180);
-        ofDrawBitmapStringHighlight("Transition: " + ofToString(int(transition * 100)) + "%", 0, 200);
-        string ready = "Transition in process: ";
-        ready += transitionInProcess ? "yes" : "no";
-        ofDrawBitmapStringHighlight(ready, 0, 220);
-        ofPopMatrix();
     }
     void draw() {
         int n = sourceTiles.size();
@@ -586,10 +513,6 @@ public:
         source.bind();
         mesh.drawFaces();
         source.unbind();
-        
-        if(debugMode) {
-            drawDebug();
-        }
     }
 };
 
