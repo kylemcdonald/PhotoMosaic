@@ -64,13 +64,8 @@ public:
     }
     void keyPressed(int key) {
         switch (key) {
-                //            case 'a': loadPortrait("a.jpg"); break;
-                //            case 'b': loadPortrait("b.jpg"); break;
-                //            case 'c': loadPortrait("c.jpg"); break;
             case 'f': ofToggleFullscreen(); break;
             case '0': randomPortrait(); break;
-                //            case '2': transitionCircle = !transitionCircle; break;
-                //            case '3': transitionManhattan = !transitionManhattan; break;
         }
     }
     void randomPortrait() {

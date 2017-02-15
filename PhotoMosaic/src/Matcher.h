@@ -6,7 +6,7 @@
 #include "Highpass.h"
 #include "Tile.h"
 
-/// A Matcher finds a solution for combining Tiles.
+/// A Matcher finds a good solution for reorganizing Tiles.
 class Matcher : public ofThread {
 public:
     Matcher()
