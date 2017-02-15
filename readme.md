@@ -16,3 +16,6 @@ Simpler changes:
 - Tiles should be built without resizing if possible. Or: resizing should be done in a way that takes number of sub-tile samples into account.
 - Use maximum amount of time to solve photomosaic rather plus max iterations.
 - Put the thread in the right place. Threaded image loading should, maybe, happen separately from threaded mosaic solving...? If we take a photo with the camera we can get the image immediately.
+- Separate downsampling from the buildTiles code.
+- Remove global variables.
+- There's a bug when the size is not integer divisible by the tile size.

@@ -180,6 +180,8 @@ public:
     ,weight(weight) {
     }
     static vector<Tile> buildTiles(const ofPixels& pix, int side) {
+        ofLog() << "Building tiles for " << pix.getWidth() << "x" << pix.getHeight() << " at side " << side;
+        
         // we could do this with resizing but OF doesn't have a good downsampling method
         float subsample = (float) side / subsampling;
         int w = pix.getWidth(), h = pix.getHeight();
@@ -304,25 +306,28 @@ private:
         string filename;
         while(inputChannel.receive(filename)) {
             processing = true;
-            vector<Tile> data = buildTiles(filename);
-            if(data.size() == 0) {
+            vector<Tile> destTiles = buildTiles(filename);
+            if(destTiles.size() == 0) {
                 ofLog() << "No tiles, skipping matching process.";
             } else {
                 const vector<Tile>& sourceTiles = *inputSource;
+                if(destTiles.size() != sourceTiles.size()) {
+                    ofLogError() << "The number of source tiles and destination tiles do not match.";
+                }
                 for(int i = 0; i < iterations; i++) {
                     int a = ofRandom(sourceTiles.size()), b = ofRandom(sourceTiles.size());
                     const Tile& lefta = sourceTiles[a];
                     const Tile& leftb = sourceTiles[b];
-                    const Tile& righta = data[a];
-                    const Tile& rightb = data[b];
+                    const Tile& righta = destTiles[a];
+                    const Tile& rightb = destTiles[b];
                     long sumab = getCost(lefta, righta) + getCost(leftb, rightb);
                     long sumba = getCost(lefta, rightb) + getCost(leftb, righta);
                     if(sumba < sumab) {
-                        swap(data[a], data[b]);
+                        swap(destTiles[a], destTiles[b]);
                     }
                 }
             }
-            outputChannel.send(data);
+            outputChannel.send(destTiles);
             processing = false;
         }
     }
@@ -384,6 +389,11 @@ public:
         side = 30;
         width = ofGetWidth();
         height = ofGetHeight();
+        
+        // guarantee that width and height are evenly divisible by tile size
+        width = side * (width / side);
+        height = side * (height / side);
+        
         iterations = 100000;
         highpassSize = 250;
         highpassContrast = 20;
@@ -403,13 +413,13 @@ public:
     }
     void keyPressed(int key) {
         switch (key) {
-//            case 'a': loadPortrait("a.jpg"); break;
-//            case 'b': loadPortrait("b.jpg"); break;
-//            case 'c': loadPortrait("c.jpg"); break;
+                //            case 'a': loadPortrait("a.jpg"); break;
+                //            case 'b': loadPortrait("b.jpg"); break;
+                //            case 'c': loadPortrait("c.jpg"); break;
             case 'f': ofToggleFullscreen(); break;
             case '0': randomPortrait(); break;
-//            case '2': transitionCircle = !transitionCircle; break;
-//            case '3': transitionManhattan = !transitionManhattan; break;
+                //            case '2': transitionCircle = !transitionCircle; break;
+                //            case '3': transitionManhattan = !transitionManhattan; break;
         }
     }
     void randomPortrait() {
@@ -470,17 +480,28 @@ public:
     void transitionFinished() {
         
     }
-    void setupSource(bool rebuild = false) {
+    void setupSource() {
+        bool rebuild = false;
+        
         ofFile sourceFile("source.tiff");
-        if(sourceFile.exists() && !rebuild) {
+        if(sourceFile.exists()) {
             ofLog() << "Loading source.";
             source.load(sourceFile.path());
             ofLog() << "Loaded source.";
+            if(source.getWidth() != width || source.getHeight() != height) {
+                ofLog() << "Source does not match current width and height.";
+                rebuild = true;
+            }
         } else {
+            rebuild = true;
+        }
+        
+        if(rebuild) {
             ofLog() << "Rebuilding source.";
             source = ofImage(buildGrid("db", width, height, side));
             ofLog() << "Rebuilt source.";
         }
+        
         // source = ofImage(addToGrid(source, "upcoming", width, height, side));
         source.save(sourceFile);
         ofPixels& pix = source.getPixels();
@@ -503,8 +524,8 @@ public:
             Tile& end = endTiles[i];
             float t = ofMap(transition, transitionBegin[i], transitionEnd[i], 0, 1, true);
             ofVec2f lerp = transitionManhattan ?
-                manhattanLerp(begin, end, smoothstep(t)) :
-                euclideanLerp(begin, end, smoothstep(t));
+            manhattanLerp(begin, end, smoothstep(t)) :
+            euclideanLerp(begin, end, smoothstep(t));
             Tile& s = sourceTiles[i];
             addSubsection(mesh, source.getTexture(), lerp.x, lerp.y, side, side, s.x, s.y);
         }
