@@ -272,7 +272,6 @@ class Matcher : public ofThread {
 public:
     Matcher()
     :ready(false)
-    ,saveImage(false)
     ,processing(false) {
         startThread();
     }
@@ -281,9 +280,8 @@ public:
         outputChannel.close();
         waitForThread(true);
     }
-    void match(const vector<Tile>& inputSource, string target, bool saveImage=false) {
+    void match(const vector<Tile>& inputSource, string target) {
         this->inputSource = &inputSource;
-        this->saveImage = saveImage;
         inputChannel.send(target);
     }
     bool update() {
@@ -313,8 +311,10 @@ private:
                 const vector<Tile>& sourceTiles = *inputSource;
                 for(int i = 0; i < iterations; i++) {
                     int a = ofRandom(sourceTiles.size()), b = ofRandom(sourceTiles.size());
-                    const Tile& lefta = sourceTiles[a], leftb = sourceTiles[b];
-                    const Tile& righta = data[a], rightb = data[b];
+                    const Tile& lefta = sourceTiles[a];
+                    const Tile& leftb = sourceTiles[b];
+                    const Tile& righta = data[a];
+                    const Tile& rightb = data[b];
                     long sumab = getCost(lefta, righta) + getCost(leftb, rightb);
                     long sumba = getCost(lefta, rightb) + getCost(leftb, righta);
                     if(sumba < sumab) {
@@ -332,11 +332,10 @@ private:
         if(!ofLoadImage(image, filename)) {
             ofLogError() << "Error loading image " << filename;
             return {};
+        } else {
+            ofLog() << "Image loaded";
         }
         image.setImageType(OF_IMAGE_COLOR);
-        if(saveImage) {
-            ofSaveImage(image, "portraits/" + ofGetTimestampString() + ".jpg");
-        }
         highpass.filter(image, image, highpassSize, highpassContrast);
         ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
         ofRectangle targetRect(0, 0, width, height);
@@ -349,7 +348,6 @@ private:
     }
     
     Highpass highpass;
-    bool saveImage;
     const vector<Tile>* inputSource;
     ofThreadChannel<string> inputChannel;
     ofThreadChannel<vector<Tile>> outputChannel;
