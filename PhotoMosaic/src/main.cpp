@@ -168,13 +168,13 @@ ofColor getAverage(const ofPixels& pix, int x, int y, int w, int h) {
 }
 
 const int subsampling = 3;
-class Tile : public ofVec2f {
+class Tile : public glm::vec2 {
 public:
     int side;
     vector<ofColor> grid;
     float weight;
     Tile(int x, int y, int side, const vector<ofColor>& grid, float weight)
-    :ofVec2f(x, y)
+    :glm::vec2(x, y)
     ,side(side)
     ,grid(grid)
     ,weight(weight) {
@@ -187,6 +187,7 @@ public:
         int w = pix.getWidth(), h = pix.getHeight();
         int nx = w / side, ny = h / side;
         vector<Tile> tiles;
+        glm::vec2 center = glm::vec2(w, h) / 2;
         for(int y = 0; y < h; y+=side) {
             for(int x = 0; x < w; x+=side) {
                 vector<ofColor> grid;
@@ -195,7 +196,7 @@ public:
                         grid.push_back(getAverage(pix, x+kx*subsample, y+ky*subsample, subsample, subsample));
                     }
                 }
-                float distance = ofVec2f(x, y).distance(ofVec2f(w, h) * 0.5);
+                float distance = glm::distance(glm::vec2(x, y), center);
                 float weight = ofMap(distance, 0, w / 2, 1, 0, true);
                 tiles.emplace_back(x, y, side, grid, weight);
             }
@@ -207,31 +208,31 @@ public:
 // lerps along x then along y, linearly
 // a nicer but more complicated implementation would
 // lerp the bigger direction first
-ofVec2f manhattanLerp(ofVec2f begin, ofVec2f end, float t) {
+glm::vec2 manhattanLerp(glm::vec2 begin, glm::vec2 end, float t) {
     float dx = fabs(begin.x - end.x);
     float dy = fabs(begin.y - end.y);
     float dd = dx + dy;
     float dc = dd * t;
     if(dc < dx) { // lerp dx
         float dt = dc / dx;
-        return ofVec2f(ofLerp(begin.x, end.x, dt), begin.y);
+        return glm::vec2(ofLerp(begin.x, end.x, dt), begin.y);
     } else if(dc < dd) { // lerp dy
         float dt = (dc - dx) / dy;
-        return ofVec2f(end.x, ofLerp(begin.y, end.y, dt));
+        return glm::vec2(end.x, ofLerp(begin.y, end.y, dt));
     } else { // when dy or dx+dy is zero
-        return ofVec2f(end.x, end.y);
+        return glm::vec2(end.x, end.y);
     }
 }
 
-ofVec2f euclideanLerp(ofVec2f begin, ofVec2f end, float t) {
-    return begin.interpolate(end, t);
+glm::vec2 euclideanLerp(glm::vec2 begin, glm::vec2 end, float t) {
+    return glm::mix(begin, end, t);
 }
 
 void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
-    ofVec2f nwc = tex.getCoordFromPoint(sx, sy);
-    ofVec2f nec = tex.getCoordFromPoint(sx + w, sy);
-    ofVec2f sec = tex.getCoordFromPoint(sx + w, sy + h);
-    ofVec2f swc = tex.getCoordFromPoint(sx, sy + h);
+    glm::vec2 nwc = tex.getCoordFromPoint(sx, sy);
+    glm::vec2 nec = tex.getCoordFromPoint(sx + w, sy);
+    glm::vec2 sec = tex.getCoordFromPoint(sx + w, sy + h);
+    glm::vec2 swc = tex.getCoordFromPoint(sx, sy + h);
     
     mesh.addTexCoord(nwc);
     mesh.addTexCoord(nec);
@@ -442,7 +443,7 @@ public:
             } else {
                 lastTransitionStart = ofGetElapsedTimeMillis();
                 
-                ofVec2f center = ofVec2f(width, height) / 2;
+                glm::vec2 center = glm::vec2(width, height) / 2;
                 float diagonal = sqrt(width*width + height*height) / 2;
                 bool topDown = ofRandomuf() < .5;
                 transitionCircle = allowTransitionCircle && ofRandomuf() < .5;
@@ -451,7 +452,7 @@ public:
                     Tile& cur = endTiles[i];
                     float begin;
                     if(transitionCircle) {
-                        begin = ofMap(cur.distance(center), 0, diagonal, 0, .75);
+                        begin = ofMap(glm::distance(cur, center), 0, diagonal, 0, .75);
                     } else {
                         if(topDown) {
                             begin = ofMap(cur.y, 0, height, 0, .75);
@@ -523,7 +524,7 @@ public:
             Tile& begin = beginTiles[i];
             Tile& end = endTiles[i];
             float t = ofMap(transition, transitionBegin[i], transitionEnd[i], 0, 1, true);
-            ofVec2f lerp = transitionManhattan ?
+            glm::vec2 lerp = transitionManhattan ?
             manhattanLerp(begin, end, smoothstep(t)) :
             euclideanLerp(begin, end, smoothstep(t));
             Tile& s = sourceTiles[i];
