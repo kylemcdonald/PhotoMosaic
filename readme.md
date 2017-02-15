@@ -18,4 +18,4 @@ Simpler changes:
 - Put the thread in the right place. Threaded image loading should, maybe, happen separately from threaded mosaic solving...? If we take a photo with the camera we can get the image immediately.
 - Separate downsampling from the buildTiles code.
 - Remove global variables.
-- There's a bug when the size is not integer divisible by the tile size.
+- If possible, we should use mipmap generation or similar when resizing the images. Or this should just be done outside of the code.
