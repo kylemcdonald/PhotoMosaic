@@ -1,7 +1,5 @@
 #pragma once
 #include "ofxCv.h"
-using namespace ofxCv;
-using namespace cv;
 
 class Highpass {
 public:
@@ -9,7 +7,7 @@ public:
     vector<cv::Mat> labChannels;
     
     template <class S, class D>
-    void filter(S& src, D& dst, int size, float contrast = 1) {
+    void filter(S& src, D& dst, int size, float contrast=1) {
         if(size == 0) {
             ofxCv::copy(src, dst);
             return;

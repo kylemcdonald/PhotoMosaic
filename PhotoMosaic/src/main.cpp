@@ -1,6 +1,6 @@
-#include "ofMain.h"
 #include "Highpass.h"
 #include "PhotoMosaicUtils.h"
+#include "ofMain.h"
 
 using namespace glm;
 
@@ -23,11 +23,11 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     buffer.begin();
     ofClear(255, 255, 255, 255);
     auto filesitr = files.begin();
-    for(auto& position : getGrid(width, height, side)) {
+    for(auto& position : buildGrid(width, height, side)) {
         int x = position.first;
         int y = position.second;
         if(img.load(filesitr->path())) {
-            drawCenterSquare(img, x, y, side, side);
+            drawCenterSquare(img, x, y, side);
         }
         filesitr++;
         if(filesitr == files.end()) {
@@ -60,13 +60,13 @@ ofPixels addToGrid(const ofImage& src, string dir, int width, int height, int si
     ofClear(255, 255, 255, 255);
     src.draw(0, 0);
     auto filesitr = files.begin();
-    auto positions = getGrid(width, height, side);
+    auto positions = buildGrid(width, height, side);
     ofRandomize(positions);
     for(auto& position : positions) {
         int x = position.first;
         int y = position.second;
         if(img.load(filesitr->path())) {
-            drawCenterSquare(img, x, y, side, side);
+            drawCenterSquare(img, x, y, side);
         }
         filesitr++;
         if(filesitr == files.end()) {
@@ -112,7 +112,6 @@ public:
         // we could do this with resizing but OF doesn't have a good downsampling method
         float subsample = (float) side / subsampling;
         int w = pix.getWidth(), h = pix.getHeight();
-        int nx = w / side, ny = h / side;
         vector<Tile> tiles;
         vec2 center = vec2(w, h) / 2;
         for(int y = 0; y < h; y+=side) {
@@ -431,7 +430,6 @@ public:
         
         // source = ofImage(addToGrid(source, "upcoming", width, height, side));
         source.save(sourceFile);
-        ofPixels& pix = source.getPixels();
         sourceTiles = Tile::buildTiles(source, side);
     }
     void update() {
