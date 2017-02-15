@@ -1,6 +1,7 @@
 #include "PhotoMosaicUtils.h"
 
 using namespace std;
+using namespace glm;
 
 float smoothstep(float x) {
     return x*x*(3 - 2*x);
@@ -80,16 +81,48 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     return out;
 }
 
-ofColor getAverage(const ofPixels& pix, int x, int y, int w, int h) {
-    unsigned long r = 0, g = 0, b = 0;
-    for(int j = y; j < y + h; j++) {
-        for(int i = x; i < x + w; i++) {
-            const ofColor& cur = pix.getColor(i, j);
-            r += cur.r;
-            g += cur.g;
-            b += cur.b;
-        }
+vec2 manhattanLerp(vec2 begin, vec2 end, float t) {
+    float dx = fabs(begin.x - end.x);
+    float dy = fabs(begin.y - end.y);
+    float dd = dx + dy;
+    float dc = dd * t;
+    if(dc < dx) { // lerp dx
+        float dt = dc / dx;
+        return vec2(ofLerp(begin.x, end.x, dt), begin.y);
+    } else if(dc < dd) { // lerp dy
+        float dt = (dc - dx) / dy;
+        return vec2(end.x, ofLerp(begin.y, end.y, dt));
+    } else { // when dy or dx+dy is zero
+        return vec2(end.x, end.y);
     }
-    unsigned long n = w * h;
-    return ofColor(r / n, g / n, b / n);
+}
+
+vec2 euclideanLerp(vec2 begin, vec2 end, float t) {
+    return mix(begin, end, t);
+}
+
+void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
+    vec2 nwc = tex.getCoordFromPoint(sx, sy);
+    vec2 nec = tex.getCoordFromPoint(sx + w, sy);
+    vec2 sec = tex.getCoordFromPoint(sx + w, sy + h);
+    vec2 swc = tex.getCoordFromPoint(sx, sy + h);
+    
+    mesh.addTexCoord(nwc);
+    mesh.addTexCoord(nec);
+    mesh.addTexCoord(swc);
+    mesh.addTexCoord(nec);
+    mesh.addTexCoord(sec);
+    mesh.addTexCoord(swc);
+    
+    vec3 nwp(x, y, 0);
+    vec3 nep(x + w, y, 0);
+    vec3 sep(x + w, y + h, 0);
+    vec3 swp(x, y + h, 0);
+    
+    mesh.addVertex(nwp);
+    mesh.addVertex(nep);
+    mesh.addVertex(swp);
+    mesh.addVertex(nep);
+    mesh.addVertex(sep);
+    mesh.addVertex(swp);
 }

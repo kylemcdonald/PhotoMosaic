@@ -19,3 +19,4 @@ Simpler changes:
 - Separate downsampling from the buildTiles code.
 - Remove global variables.
 - If possible, we should use mipmap generation or similar when resizing the images. Or this should just be done outside of the code.
+- Should the Matcher should be responsible for initializing the source tiles?
