@@ -1,4 +1,5 @@
 #pragma once
+
 #include "ofMath.h"
 #include "ofFileUtils.h"
 #include "ofImage.h"
@@ -21,3 +22,9 @@ void drawCenterSquare(const ofImage& img, float x, float y, float side);
 
 /// Build a grid with spacing side covering a space width x height.
 std::vector<pair<int, int>> buildGrid(int width, int height, int side);
+
+/// Build a grid from images in directory dir covering a space width x height with tiles of size side.
+ofPixels buildGrid(string dir, int width, int height, int side);
+
+/// Get the average color from a region in pix.
+ofColor getAverage(const ofPixels& pix, int x, int y, int w, int h);
