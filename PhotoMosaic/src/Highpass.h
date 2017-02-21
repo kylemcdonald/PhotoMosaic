@@ -1,29 +1,31 @@
 #pragma once
-#include "ofxCv.h"
+
+#include "ofBaseTypes.h"
+#include "opencv2/opencv.hpp"
 
 class Highpass {
 public:
     cv::Mat lab, lowpass, highpass;
     vector<cv::Mat> labChannels;
     
-    template <class S, class D>
-    void filter(S& src, D& dst, int size, float contrast=1) {
+    void filter(ofPixels& pix, float size, float contrast=1) {
         if(size == 0) {
-            ofxCv::copy(src, dst);
             return;
         }
         
+        unsigned int w = pix.getWidth(), h = pix.getHeight();
+        size *= MAX(w, h);
+        
         // get cv::Mat from src and dst
-        cv::Mat srcMat = ofxCv::toCv(src);
-        cv::Mat dstMat = ofxCv::toCv(dst);
+        cv::Mat mat = cv::Mat(h, w, CV_8UC3, pix.getData(), 0);
         
         // allocate the first time
-        lab.create(srcMat.rows, srcMat.cols, CV_8UC3);
-        lowpass.create(srcMat.rows, srcMat.cols, CV_8UC1);
-        highpass.create(srcMat.rows, srcMat.cols, CV_8UC1);
+        lab.create(mat.rows, mat.cols, CV_8UC3);
+        lowpass.create(mat.rows, mat.cols, CV_8UC1);
+        highpass.create(mat.rows, mat.cols, CV_8UC1);
         
         // convert to Lab color and extract lightness
-        cv::cvtColor(srcMat, lab, CV_RGB2Lab);
+        cv::cvtColor(mat, lab, CV_RGB2Lab);
         cv::split(lab, labChannels);
         const cv::Mat& lightness = labChannels[0];
         
@@ -37,11 +39,10 @@ public:
         if (contrast != 1) {
             highpass *= contrast;
         }
-        highpass += 128; // should be diff for other datatypes
+        highpass += 128; // would be diff for other datatypes
         highpass.convertTo(lightness, lightness.type());
-        
-        ofxCv::imitate(dst, src);
-        cv::merge(labChannels, dstMat);
-        cv::cvtColor(dstMat, dstMat, CV_Lab2RGB);
+
+        cv::merge(labChannels, mat);
+        cv::cvtColor(mat, mat, CV_Lab2RGB);
     }
 };

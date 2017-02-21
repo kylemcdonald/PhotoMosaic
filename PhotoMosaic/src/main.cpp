@@ -48,7 +48,7 @@ public:
         matcher.width = width;
         matcher.height = height;
         matcher.iterations = 100000;
-        matcher.highpassSize = 250;
+        matcher.highpassSize = 0.25;
         matcher.highpassContrast = 20;
         
         setupSource();

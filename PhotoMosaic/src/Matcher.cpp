@@ -1,5 +1,7 @@
 #include "Matcher.h"
 
+#include "ofImage.h"
+
 void Matcher::close() {
     inputChannel.close();
     outputChannel.close();
@@ -65,7 +67,7 @@ vector<Tile> Matcher::buildTiles(string filename) {
         ofLog() << "Image loaded";
     }
     image.setImageType(OF_IMAGE_COLOR);
-    highpass.filter(image, image, highpassSize, highpassContrast);
+    highpass.filter(image, highpassSize, highpassContrast);
     ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
     ofRectangle targetRect(0, 0, width, height);
     targetRect.scaleTo(originalRect, OF_SCALEMODE_FIT);

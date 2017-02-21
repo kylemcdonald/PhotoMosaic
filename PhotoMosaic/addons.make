@@ -1,2 +1,1 @@
-ofxCv
 ofxOpenCv
