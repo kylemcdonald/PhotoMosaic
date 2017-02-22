@@ -57,6 +57,10 @@ void Matcher::threadedFunction() {
         processing = false;
     }
 }
+
+// what should really happen: Matcher should be the only class calling Tile::buildTiles
+// Matcher should handle any necessary cropping and resizing of the image
+// then Tile::buildTiles should only take a subsampling parameter
 vector<Tile> Matcher::buildTiles(string filename) {
     ofPixels image;
     ofLog() << "Loading image " << filename;

@@ -33,17 +33,8 @@ public:
         // use lowpass to produce highpass
         // could convert to 16s instead of 32f for extra speed
         cv::subtract(lightness, lowpass, highpass, cv::noArray(), CV_32F);
-        
-        double minVal, maxVal;
-        cv::minMaxLoc(lightness, &minVal, &maxVal);
-        std::cout << "lightness ranges from " << minVal << " to " << maxVal << std::endl;
-        
-        cv::minMaxLoc(lowpass, &minVal, &maxVal);
-        std::cout << "lowpass ranges from " << minVal << " to " << maxVal << std::endl;
-        
-        cv::minMaxLoc(highpass, &minVal, &maxVal);
-        std::cout << "highpass ranges from " << minVal << " to " << maxVal << std::endl;
-        
+
+        // get the standard deviation for auto-scaling the contrast
         cv::Scalar mean, stddev;
         cv::meanStdDev(highpass, mean, stddev);
         

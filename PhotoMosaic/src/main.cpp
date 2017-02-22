@@ -31,7 +31,6 @@ public:
     void setup() {
         ofSetBackgroundAuto(false);
         ofSetVerticalSync(true);
-        ofHideCursor();
         
         side = 32;
         width = ofGetWidth();

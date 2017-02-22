@@ -6,6 +6,18 @@
 #include "Highpass.h"
 #include "Tile.h"
 
+//class Matcher {
+//public:
+//    Matcher();
+//    
+//    void setup(int width, int height, int tileSize);
+//    void addTile(const cv::Mat& tileImage);
+//    
+//    void match(const cv::Mat& targetImage);
+//    const vector<int>& getMatchIndices() const;
+//    const vector<cv::Point2i>& getMatchPositions() const;
+//};
+
 /// A Matcher finds a good solution for reorganizing Tiles.
 class Matcher : public ofThread {
 public:

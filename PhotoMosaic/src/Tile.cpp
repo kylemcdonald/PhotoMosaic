@@ -3,7 +3,7 @@
 const int subsampling = 3;
 
 /// Get the perceptual difference between two colors.
-long getCost(const cv::Vec3b& c1, const cv::Vec3b& c2) {
+inline long getCost(const cv::Vec3b& c1, const cv::Vec3b& c2) {
     long rmean = ((long) c1[0] + (long) c2[0]) / 2;
     long r = (long) c1[0] - (long) c2[0];
     long g = (long) c1[1] - (long) c2[1];
@@ -21,30 +21,31 @@ float Tile::getCost(const Tile& a, const Tile& b) {
     return total * (a.weight + b.weight);
 }
 
-/// Get the average color from a region of a matrix.
-cv::Vec3b getAverage(const cv::Mat& mat, int x, int y, int w, int h) {
-    cv::Scalar avg = cv::mean(mat(cv::Rect(x, y, w, h)));
-    return cv::Vec3b(avg[0], avg[1], avg[2]);
-}
-
-std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
-    int w = mat.cols, h = mat.rows;
+std::vector<Tile> Tile::buildTiles(const cv::Mat& input, int side) {
+    int sw = input.cols, sh = input.rows;
     float subsample = (float) side / subsampling;
-    std::cout << "Building tiles for " << w << "x" << h << " at side " << side << " subsample " << subsample << std::endl;
+    int w = (sw * subsampling) / side;
+    int h = (sh * subsampling) / side;
     
+    cv::Mat mat;
+    std::cout << "converting to " << w << " x " << h << std::endl;
+    cv::resize(input, mat, cv::Size(w, h), 0, 0, cv::INTER_AREA);
+    
+    w = mat.cols, h = mat.rows;
+    std::cout << "Building tiles for " << w << "x" << h << " at side " << side << " subsampling " << subsampling << std::endl;
+
     std::vector<Tile> tiles;
-    cv::Vec2f center = cv::Vec2f(w, h) / 2;
+    // subtract the subsampling amount so we compare distances below relative to center of tile
+    cv::Vec2f center = cv::Vec2f(w-subsampling, h-subsampling) / 2;
     float maxDistance = norm(center);
-    for(int y = 0; y < h; y+=side) {
-        for(int x = 0; x < w; x+=side) {
-            std::vector<cv::Vec3b> grid;
-            for(int ky = 0; ky < subsampling; ky++) {
-                for(int kx = 0; kx < subsampling; kx++) {
-                    grid.push_back(getAverage(mat, x+kx*subsample, y+ky*subsample, subsample, subsample));
-                }
-            }
+    cv::Mat roi;
+    for(int y = 0; y < h; y+=subsampling) {
+        for(int x = 0; x < w; x+=subsampling) {
+            // copy the current region of interest to a new cv::Mat to make it continuous
+            mat(cv::Rect(x, y, subsampling, subsampling)).copyTo(roi);
             float distanceFromCenter = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
-            tiles.emplace_back(x, y, side, grid, 1 - distanceFromCenter);
+            int sx = (x*side)/subsampling, sy = (y*side)/subsampling;
+            tiles.emplace_back(sx, sy, side, roi.reshape(0, 1), 1 - distanceFromCenter);
         }
     }
     return tiles;
