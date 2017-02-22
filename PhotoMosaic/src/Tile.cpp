@@ -43,8 +43,8 @@ std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
                     grid.push_back(getAverage(mat, x+kx*subsample, y+ky*subsample, subsample, subsample));
                 }
             }
-            float weight = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
-            tiles.emplace_back(x, y, side, grid, weight);
+            float distanceFromCenter = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
+            tiles.emplace_back(x, y, side, grid, 1 - distanceFromCenter);
         }
     }
     return tiles;

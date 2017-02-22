@@ -48,8 +48,8 @@ public:
         matcher.width = width;
         matcher.height = height;
         matcher.iterations = 1000000;
-        matcher.highpassSize = 0.15;
-        matcher.highpassContrast = 20;
+        matcher.highpassSize = 0.10; // between 0 to 1
+        matcher.highpassContrast = 1; // between 0.1 to 10
         
         setupSource();
         beginTiles = sourceTiles;
@@ -144,7 +144,7 @@ public:
         
         if(rebuild) {
             ofLog() << "Rebuilding source.";
-            source = ofImage(buildGrid("db", width, height, side));
+            source = ofImage(buildGrid("db-trimmed", width, height, side));
             ofLog() << "Rebuilt source.";
         }
         

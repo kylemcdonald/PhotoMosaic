@@ -10,6 +10,7 @@ Ideas for making the algorithm better:
 - Does the smaller number of elements situation make the matching easier? We could do WxHxN comparisons where N is the number target tiles.
 - For 2732x2048 at 30x30 pixels, that's 91x68 pixels or 6188 tiles. Potential matches for a given tile are probably 2% of the space or 100 tiles. This becomes a fairly small assignment problem for something like CSA, done in a few seconds. But this is more likely to have an error, and creates a bigger codebase.
 
+- Crop images to big as big as possible.
 - Convert openFrameworks dependencies to OpenCV dependencies.
 - Break out solver into its own class. Threading should be separate from solver.
 - Break out the timer into a separate class.
