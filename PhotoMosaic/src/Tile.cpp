@@ -1,15 +1,13 @@
 #include "Tile.h"
 
-using namespace glm;
-
 const int subsampling = 3;
 
 /// Get the perceptual difference between two colors.
-long getCost(const ofColor& c1, const ofColor& c2) {
-    long rmean = ((long) c1.r + (long) c2.r) / 2;
-    long r = (long) c1.r - (long) c2.r;
-    long g = (long) c1.g - (long) c2.g;
-    long b = (long) c1.b - (long) c2.b;
+long getCost(const cv::Vec3b& c1, const cv::Vec3b& c2) {
+    long rmean = ((long) c1[0] + (long) c2[0]) / 2;
+    long r = (long) c1[0] - (long) c2[0];
+    long g = (long) c1[1] - (long) c2[1];
+    long b = (long) c1[2] - (long) c2[2];
     return ((((512 + rmean)*r*r)>>8) + 4*g*g + (((767-rmean)*b*b)>>8));
 }
 
@@ -23,38 +21,29 @@ float Tile::getCost(const Tile& a, const Tile& b) {
     return total * (a.weight + b.weight);
 }
 
-/// Get the average color from a region in pix.
-ofColor getAverage(const ofPixels& pix, int x, int y, int w, int h) {
-    unsigned long r = 0, g = 0, b = 0;
-    for(int j = y; j < y + h; j++) {
-        for(int i = x; i < x + w; i++) {
-            const ofColor& cur = pix.getColor(i, j);
-            r += cur.r;
-            g += cur.g;
-            b += cur.b;
-        }
-    }
-    unsigned long n = w * h;
-    return ofColor(r / n, g / n, b / n);
+/// Get the average color from a region of a matrix.
+cv::Vec3b getAverage(const cv::Mat& mat, int x, int y, int w, int h) {
+    cv::Scalar avg = cv::mean(mat(cv::Rect(x, y, w, h)));
+    return cv::Vec3b(avg[0], avg[1], avg[2]);
 }
 
-vector<Tile> Tile::buildTiles(const ofPixels& pix, int side) {
-    ofLog() << "Building tiles for " << pix.getWidth() << "x" << pix.getHeight() << " at side " << side;
-    
-    // we could do this with resizing but OF doesn't have a good downsampling method
+std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
+    int w = mat.cols, h = mat.rows;
     float subsample = (float) side / subsampling;
-    int w = pix.getWidth(), h = pix.getHeight();
-    vector<Tile> tiles;
-    vec2 center = vec2(w, h) / 2;
+    std::cout << "Building tiles for " << w << "x" << h << " at side " << side << " subsample " << subsample << std::endl;
+    
+    std::vector<Tile> tiles;
+    cv::Vec2f center = cv::Vec2f(w, h) / 2;
+    float maxDistance = norm(center);
     for(int y = 0; y < h; y+=side) {
         for(int x = 0; x < w; x+=side) {
-            vector<ofColor> grid;
+            std::vector<cv::Vec3b> grid;
             for(int ky = 0; ky < subsampling; ky++) {
                 for(int kx = 0; kx < subsampling; kx++) {
-                    grid.push_back(getAverage(pix, x+kx*subsample, y+ky*subsample, subsample, subsample));
+                    grid.push_back(getAverage(mat, x+kx*subsample, y+ky*subsample, subsample, subsample));
                 }
             }
-            float weight = ofMap(distance(vec2(x, y), center), 0, w / 2, 1, 0, true);
+            float weight = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
             tiles.emplace_back(x, y, side, grid, weight);
         }
     }

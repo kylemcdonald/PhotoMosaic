@@ -78,6 +78,7 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
     
     ofPixels out;
     buffer.readToPixels(out);
+    out.setImageType(OF_IMAGE_COLOR);
     return out;
 }
 

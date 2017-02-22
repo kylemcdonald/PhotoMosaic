@@ -1,19 +1,22 @@
 #pragma once
 
-#include "ofPixels.h"
+#include <vector>
+#include "opencv2/opencv.hpp"
 
 /// A Tile is the smallest piece of a PhotoMosaic.
-class Tile : public glm::vec2 {
+class Tile {
 public:
     int side;
-    std::vector<ofColor> grid;
+    cv::Vec2f position;
+    std::vector<cv::Vec3b> grid;
     float weight;
-    Tile(int x, int y, int side, const vector<ofColor>& grid, float weight)
-    :glm::vec2(x, y)
+    
+    Tile(int x, int y, int side, const std::vector<cv::Vec3b>& grid, float weight)
+    :position(x, y)
     ,side(side)
     ,grid(grid)
     ,weight(weight) {
     }
-    static vector<Tile> buildTiles(const ofPixels& pix, int side);
+    static std::vector<Tile> buildTiles(const cv::Mat& pix, int side);
     static float getCost(const Tile& a, const Tile& b);
 };

@@ -33,7 +33,7 @@ public:
         ofSetVerticalSync(true);
         ofHideCursor();
         
-        side = 30;
+        side = 32;
         width = ofGetWidth();
         height = ofGetHeight();
         
@@ -47,8 +47,8 @@ public:
         matcher.side = side;
         matcher.width = width;
         matcher.height = height;
-        matcher.iterations = 100000;
-        matcher.highpassSize = 0.25;
+        matcher.iterations = 1000000;
+        matcher.highpassSize = 0.15;
         matcher.highpassContrast = 20;
         
         setupSource();
@@ -94,7 +94,7 @@ public:
                 transitionCircle = allowTransitionCircle && ofRandomuf() < .5;
                 transitionManhattan = allowTransitionManhattan && ofRandomuf() < .5;
                 for(int i = 0; i < sourceTiles.size(); i++) {
-                    Tile& cur = endTiles[i];
+                    vec2 cur(endTiles[i].position[0], endTiles[i].position[1]);
                     float begin;
                     if(transitionCircle) {
                         begin = ofMap(distance(cur, center), 0, diagonal, 0, .75);
@@ -149,7 +149,8 @@ public:
         }
         
         source.save(sourceFile);
-        sourceTiles = Tile::buildTiles(source, side);
+        cv::Mat sourceMat(source.getHeight(), source.getWidth(), CV_8UC3, source.getPixels().getData(), 0);
+        sourceTiles = Tile::buildTiles(sourceMat, side);
     }
     void update() {
         if(!transitionInProcess) {
@@ -164,13 +165,13 @@ public:
         ofMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
         for(int i = 0; i < n; i++) {
-            Tile& begin = beginTiles[i];
-            Tile& end = endTiles[i];
+            vec2 begin(beginTiles[i].position[0], beginTiles[i].position[1]);
+            vec2 end(endTiles[i].position[0], endTiles[i].position[1]);
             float t = ofMap(transition, transitionBegin[i], transitionEnd[i], 0, 1, true);
             vec2 lerp = transitionManhattan ?
-            manhattanLerp(begin, end, smoothstep(t)) :
-            euclideanLerp(begin, end, smoothstep(t));
-            Tile& s = sourceTiles[i];
+                manhattanLerp(begin, end, smoothstep(t)) :
+                euclideanLerp(begin, end, smoothstep(t));
+            vec2 s(sourceTiles[i].position[0], sourceTiles[i].position[1]);
             addSubsection(mesh, source.getTexture(), lerp.x, lerp.y, side, side, s.x, s.y);
         }
         source.bind();

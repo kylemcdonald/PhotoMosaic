@@ -67,13 +67,19 @@ vector<Tile> Matcher::buildTiles(string filename) {
         ofLog() << "Image loaded";
     }
     image.setImageType(OF_IMAGE_COLOR);
-    highpass.filter(image, highpassSize, highpassContrast);
+    
+    // get cv::Mat from src and dst
+    cv::Mat mat(image.getHeight(), image.getWidth(), CV_8UC3, image.getData(), 0);
+    highpass.filter(mat, highpassSize, highpassContrast);
+    
     ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
     ofRectangle targetRect(0, 0, width, height);
     targetRect.scaleTo(originalRect, OF_SCALEMODE_FIT);
     ofPixels cropped;
     image.cropTo(cropped, targetRect.x, targetRect.y, targetRect.width, targetRect.height);
     cropped.resize(width, height, OF_INTERPOLATE_BICUBIC);
-    vector<Tile> tiles = Tile::buildTiles(cropped, side);
+    
+    cv::Mat croppedMat(cropped.getHeight(), cropped.getWidth(), CV_8UC3, cropped.getData(), 0);
+    vector<Tile> tiles = Tile::buildTiles(croppedMat, side);
     return tiles;
 }
