@@ -1,4 +1,4 @@
-#include "PhotoMosaicUtils.h"
+#include "Utils.h"
 
 float smoothstep(float x) {
     return x*x*(3 - 2*x);

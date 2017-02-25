@@ -1,11 +1,49 @@
 #include "Matcher.h"
-#include "PhotoMosaicUtils.h"
+#include "Utils.h"
 #include "ofMain.h"
 
-using namespace glm;
+void saveMat(const cv::Mat& mat, string filename) {
+    ofPixels pix;
+    pix.setFromExternalPixels(mat.data, mat.cols, mat.rows, OF_PIXELS_RGB);
+    ofSaveImage(pix, filename);
+}
 
-cv::Vec2f toCv(vec2 v) {
+cv::Vec2f toCv(glm::vec2 v) {
     return cv::Vec2f(v.x, v.y);
+}
+
+vector<cv::Mat> loadImages(string directory) {
+    vector<cv::Mat> mats;
+    ofDirectory dir(directory);
+    dir.allowExt("png");
+    for(auto file : dir.getFiles()) {
+        ofPixels pix;
+        ofLoadImage(pix, file.path());
+        pix.setImageType(OF_IMAGE_COLOR);
+        cv::Mat mat(pix.getHeight(), pix.getWidth(), CV_8UC3, pix.getData(), 0);
+        mats.push_back(mat.clone());
+    }
+    return mats;
+}
+
+cv::Mat buildAtlas(const vector<cv::Mat>& images, unsigned int tileSize) {
+    unsigned int n = images.size();
+    int nx = ceilf(sqrtf(n));
+    int ny = ceilf(float(n) / nx);
+    cv::Mat atlas(ny * tileSize, nx * tileSize, CV_8UC3); // allocate atlas
+    atlas = cv::Scalar(255, 255, 255); // set to white
+    cv::Size dsize(tileSize, tileSize);
+    unsigned int x = 0, y = 0;
+    for(unsigned int i = 0; i < n; i++) {
+        cv::Mat roi(atlas, cv::Rect(x * tileSize, y * tileSize, tileSize, tileSize));
+        cv::resize(images[i], roi, dsize, cv::INTER_AREA);
+        x++;
+        if(x == nx) {
+            x = 0;
+            y++;
+        }
+    }
+    return atlas;
 }
 
 vector<ofFile> listImages(string directory) {
@@ -59,10 +97,10 @@ ofPixels buildGrid(string dir, int width, int height, int side) {
 
 /// Add a subsection of tex to a mesh as two triangles.
 void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
-    vec2 nwc = tex.getCoordFromPoint(sx, sy);
-    vec2 nec = tex.getCoordFromPoint(sx + w, sy);
-    vec2 sec = tex.getCoordFromPoint(sx + w, sy + h);
-    vec2 swc = tex.getCoordFromPoint(sx, sy + h);
+    glm::vec2 nwc = tex.getCoordFromPoint(sx, sy);
+    glm::vec2 nec = tex.getCoordFromPoint(sx + w, sy);
+    glm::vec2 sec = tex.getCoordFromPoint(sx + w, sy + h);
+    glm::vec2 swc = tex.getCoordFromPoint(sx, sy + h);
     
     mesh.addTexCoord(nwc);
     mesh.addTexCoord(nec);
@@ -71,10 +109,10 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
     mesh.addTexCoord(sec);
     mesh.addTexCoord(swc);
     
-    vec3 nwp(x, y, 0);
-    vec3 nep(x + w, y, 0);
-    vec3 sep(x + w, y + h, 0);
-    vec3 swp(x, y + h, 0);
+    glm::vec3 nwp(x, y, 0);
+    glm::vec3 nep(x + w, y, 0);
+    glm::vec3 sep(x + w, y + h, 0);
+    glm::vec3 swp(x, y + h, 0);
     
     mesh.addVertex(nwp);
     mesh.addVertex(nep);
@@ -90,8 +128,10 @@ public:
     
     ofImage source;
     vector<Tile> sourceTiles;
+    vector<glm::vec2> initialPositions;
+    
     vector<unsigned int> matchedIndices;
-    vector<vec2> beginPositions, endPositions;
+    vector<glm::vec2> beginPositions, endPositions;
     
     vector<float> transitionBegin, transitionEnd;
     uint64_t lastReceived = 0;
@@ -127,14 +167,6 @@ public:
         highpass.setFilterContrast(1.0);
         
         setupSource();
-        
-        for(const Tile& tile : sourceTiles) {
-            beginPositions.emplace_back(tile.position[0], tile.position[1]);
-        }
-        endPositions = beginPositions;
-        
-        transitionBegin = vector<float>(sourceTiles.size(), 0);
-        transitionEnd = vector<float>(sourceTiles.size(), 1);
     }
     void keyPressed(int key) {
         switch (key) {
@@ -173,7 +205,7 @@ public:
         
         highpass.filter(resized);
         ofLog() << "resized to " << w << "x" << h;
-        std::vector<Tile> destTiles = Tile::buildTiles(resized, side);
+        std::vector<Tile> destTiles = Tile::buildTiles(resized);
         
         ofPixels pix;
         pix.setFromExternalPixels(resized.data, resized.cols, resized.rows, OF_PIXELS_RGB);
@@ -181,13 +213,13 @@ public:
         
         matchedIndices = matcher.match(sourceTiles, destTiles);
         
-        vec2 center = vec2(width, height) / 2;
+        glm::vec2 center = glm::vec2(width, height) / 2;
         float diagonal = sqrt(width*width + height*height) / 2;
         bool topDown = ofRandomuf() < .5;
         transitionCircle = ofRandomuf() < .5;
         transitionManhattan = ofRandomuf() < .5;
         for(int i = 0; i < sourceTiles.size(); i++) {
-            vec2 cur = endPositions[i];
+            glm::vec2 cur = endPositions[i];
             float begin;
             if(transitionCircle) {
                 begin = ofMap(distance(cur, center), 0, diagonal, 0, .75);
@@ -203,7 +235,7 @@ public:
             transitionEnd[i] = MIN(end, 1);
             beginPositions[i] = endPositions[i];
             unsigned int index = matchedIndices[i];
-            endPositions[i] = vec2(sourceTiles[index].position[0], sourceTiles[index].position[1]);
+            endPositions[i] = initialPositions[index];
         }
         
         lastTransitionStart = ofGetElapsedTimeMillis();
@@ -222,7 +254,7 @@ public:
     }
     void setupSource() {
         bool rebuild = false;
-        
+
         ofFile sourceFile("source.tiff");
         if(sourceFile.exists()) {
             ofLog() << "Loading source.";
@@ -257,7 +289,26 @@ public:
         pix.setFromExternalPixels(mat.data, mat.cols, mat.rows, OF_PIXELS_RGB);
         ofSaveImage(pix, "debug-source.tiff");
         
-        sourceTiles = Tile::buildTiles(mat, side);
+        sourceTiles = Tile::buildTiles(mat);
+        
+        //
+        
+        std::vector<cv::Mat> mats = loadImages("db-trimmed");
+        cv::Mat displayMat = buildAtlas(mats, side);
+        saveMat(displayMat, "atlas.tiff");
+        
+        unsigned int nx = width / side;
+        unsigned int ny = height / side;
+        for(int y = 0; y < ny; y++) {
+            for(int x = 0; x < nx; x++) {
+                initialPositions.emplace_back(x*side, y*side);
+            }
+        }
+        beginPositions = initialPositions;
+        endPositions = initialPositions;
+        
+        transitionBegin = vector<float>(sourceTiles.size(), 0);
+        transitionEnd = vector<float>(sourceTiles.size(), 1);
     }
     void update() {
         updateTransition();
@@ -267,12 +318,12 @@ public:
         ofMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
         for(int i = 0; i < n; i++) {
-            vec2& begin = beginPositions[i], end = endPositions[i];
+            glm::vec2& begin = beginPositions[i], end = endPositions[i];
             float t = ofMap(transitionStatus, transitionBegin[i], transitionEnd[i], 0, 1, true);
             cv::Vec2f lerp = transitionManhattan ?
                 manhattanLerp(toCv(begin), toCv(end), smoothstep(t)) :
                 euclideanLerp(toCv(begin), toCv(end), smoothstep(t));
-            vec2 s(sourceTiles[i].position[0], sourceTiles[i].position[1]);
+            glm::vec2 s = initialPositions[i];
             addSubsection(mesh, source.getTexture(), lerp[0], lerp[1], side, side, s.x, s.y);
         }
         source.bind();

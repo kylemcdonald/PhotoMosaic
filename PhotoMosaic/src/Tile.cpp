@@ -21,9 +21,9 @@ float Tile::getCost(const Tile& a, const Tile& b) {
     return total * (a.weight + b.weight);
 }
 
-std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
+std::vector<Tile> Tile::buildTiles(const cv::Mat& mat) {
     int w = mat.cols, h = mat.rows;
-    std::cout << "Building tiles for " << w << "x" << h << " at side " << side << " subsampling " << subsampling << std::endl;
+    std::cout << "Building tiles for " << w << "x" << h << " subsampling " << subsampling << std::endl;
 
     std::vector<Tile> tiles;
     // subtract the subsampling amount so we compare distances relative to tile center
@@ -35,8 +35,7 @@ std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
             // copy the current region of interest to a new cv::Mat to make it continuous
             mat(cv::Rect(x, y, subsampling, subsampling)).copyTo(roi);
             float distanceFromCenter = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
-            int sx = (x*side)/subsampling, sy = (y*side)/subsampling;
-            tiles.emplace_back(sx, sy, side, roi.reshape(0, 1), 1 - distanceFromCenter);
+            tiles.emplace_back(roi.reshape(0, 1), 1 - distanceFromCenter);
         }
     }
     return tiles;
