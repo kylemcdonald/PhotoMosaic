@@ -17,6 +17,6 @@ public:
     ,grid(grid)
     ,weight(weight) {
     }
-    static std::vector<Tile> buildTiles(const cv::Mat& pix, int side);
+    static std::vector<Tile> buildTiles(const cv::Mat& mat, int side);
     static float getCost(const Tile& a, const Tile& b);
 };

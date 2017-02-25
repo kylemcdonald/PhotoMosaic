@@ -1,40 +1,19 @@
 #include "PhotoMosaicUtils.h"
 
-using namespace std;
-using namespace glm;
-
 float smoothstep(float x) {
     return x*x*(3 - 2*x);
 }
 
-vector<ofFile> listImages(string directory) {
-    ofDirectory dir(directory);
-    dir.allowExt("jpg");
-    dir.allowExt("jpeg");
-    dir.allowExt("png");
-    vector<ofFile> files = dir.getFiles();
-    ofLog() << "Listed " << files.size() << " files in " << directory << ".";
-    return files;
+cv::Rect getCenterSquare(int width, int height) {
+    int side = std::min(width, height);
+    return cv::Rect((width - side) / 2, (height - side) / 2,
+                     side, side);
 }
 
-// Get a square centered on the middle of the img.
-ofRectangle getCenterSquare(const ofImage& img) {
-    int width = img.getWidth(), height = img.getHeight();
-    int side = MIN(width, height);
-    ofRectangle crop;
-    crop.setFromCenter(width / 2, height / 2, side, side);
-    return crop;
-}
-
-void drawCenterSquare(const ofImage& img, float x, float y, float side) {
-    ofRectangle crop = getCenterSquare(img);
-    img.drawSubsection(x, y, side, side, crop.x, crop.y, crop.width, crop.height);
-}
-
-vector<pair<int, int>> buildGrid(int width, int height, int side) {
+std::vector<std::pair<int, int>> buildGrid(int width, int height, int side) {
     int m = width / side;
     int n = height / side;
-    vector<pair<int, int>> grid(m*n);
+    std::vector<std::pair<int, int>> grid(m*n);
     auto itr = grid.begin();
     for(int y = 0; y < n; y++) {
         for(int x = 0; x < m; x++) {
@@ -46,84 +25,30 @@ vector<pair<int, int>> buildGrid(int width, int height, int side) {
     return grid;
 }
 
-#include "ofFbo.h"
-#include "ofGraphics.h"
-ofPixels buildGrid(string dir, int width, int height, int side) {
-    auto files = listImages(dir);
-    
-    ofFbo buffer;
-    
-    ofFbo::Settings settings;
-    settings.width = width;
-    settings.height = height;
-    settings.useDepth = false;
-    buffer.allocate(settings);
-    
-    ofImage img;
-    buffer.begin();
-    ofClear(255, 255, 255, 255);
-    auto filesitr = files.begin();
-    for(auto& position : buildGrid(width, height, side)) {
-        int x = position.first;
-        int y = position.second;
-        if(img.load(filesitr->path())) {
-            drawCenterSquare(img, x, y, side);
-        }
-        filesitr++;
-        if(filesitr == files.end()) {
-            filesitr = files.begin();
-        }
-    }
-    buffer.end();
-    
-    ofPixels out;
-    buffer.readToPixels(out);
-    out.setImageType(OF_IMAGE_COLOR);
-    return out;
+float lerp(float start, float stop, float amt) {
+    return start + (stop-start) * amt;
 }
 
-vec2 manhattanLerp(vec2 begin, vec2 end, float t) {
-    float dx = fabs(begin.x - end.x);
-    float dy = fabs(begin.y - end.y);
+cv::Vec2f manhattanLerp(cv::Vec2f begin, cv::Vec2f end, float t) {
+    float& bx = begin[0], by = begin[1];
+    float& ex = end[0], ey = end[1];
+    float dx = fabs(bx - ex);
+    float dy = fabs(by - ey);
     float dd = dx + dy;
     float dc = dd * t;
     if(dc < dx) { // lerp dx
         float dt = dc / dx;
-        return vec2(ofLerp(begin.x, end.x, dt), begin.y);
+        return cv::Vec2f(lerp(bx, ex, dt), by);
     } else if(dc < dd) { // lerp dy
         float dt = (dc - dx) / dy;
-        return vec2(end.x, ofLerp(begin.y, end.y, dt));
+        return cv::Vec2f(ex, lerp(by, ey, dt));
     } else { // when dy or dx+dy is zero
-        return vec2(end.x, end.y);
+        return cv::Vec2f(ex, ey);
     }
 }
 
-vec2 euclideanLerp(vec2 begin, vec2 end, float t) {
-    return mix(begin, end, t);
-}
-
-void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, float h, float sx, float sy) {
-    vec2 nwc = tex.getCoordFromPoint(sx, sy);
-    vec2 nec = tex.getCoordFromPoint(sx + w, sy);
-    vec2 sec = tex.getCoordFromPoint(sx + w, sy + h);
-    vec2 swc = tex.getCoordFromPoint(sx, sy + h);
-    
-    mesh.addTexCoord(nwc);
-    mesh.addTexCoord(nec);
-    mesh.addTexCoord(swc);
-    mesh.addTexCoord(nec);
-    mesh.addTexCoord(sec);
-    mesh.addTexCoord(swc);
-    
-    vec3 nwp(x, y, 0);
-    vec3 nep(x + w, y, 0);
-    vec3 sep(x + w, y + h, 0);
-    vec3 swp(x, y + h, 0);
-    
-    mesh.addVertex(nwp);
-    mesh.addVertex(nep);
-    mesh.addVertex(swp);
-    mesh.addVertex(nep);
-    mesh.addVertex(sep);
-    mesh.addVertex(swp);
+cv::Vec2f euclideanLerp(cv::Vec2f begin, cv::Vec2f end, float t) {
+    float& bx = begin[0], by = begin[1];
+    float& ex = end[0], ey = end[1];
+    return cv::Vec2f(lerp(bx,ex,t), lerp(by,ey,t));
 }

@@ -21,23 +21,14 @@ float Tile::getCost(const Tile& a, const Tile& b) {
     return total * (a.weight + b.weight);
 }
 
-std::vector<Tile> Tile::buildTiles(const cv::Mat& input, int side) {
-    int sw = input.cols, sh = input.rows;
-    float subsample = (float) side / subsampling;
-    int w = (sw * subsampling) / side;
-    int h = (sh * subsampling) / side;
-    
-    cv::Mat mat;
-    std::cout << "converting to " << w << " x " << h << std::endl;
-    cv::resize(input, mat, cv::Size(w, h), 0, 0, cv::INTER_AREA);
-    
-    w = mat.cols, h = mat.rows;
+std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int side) {
+    int w = mat.cols, h = mat.rows;
     std::cout << "Building tiles for " << w << "x" << h << " at side " << side << " subsampling " << subsampling << std::endl;
 
     std::vector<Tile> tiles;
-    // subtract the subsampling amount so we compare distances below relative to center of tile
+    // subtract the subsampling amount so we compare distances relative to tile center
     cv::Vec2f center = cv::Vec2f(w-subsampling, h-subsampling) / 2;
-    float maxDistance = norm(center);
+    float maxDistance = norm(center); // distance from corner to center
     cv::Mat roi;
     for(int y = 0; y < h; y+=subsampling) {
         for(int x = 0; x < w; x+=subsampling) {

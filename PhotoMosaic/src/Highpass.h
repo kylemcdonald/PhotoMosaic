@@ -4,18 +4,24 @@
 #include "opencv2/opencv.hpp"
 
 class Highpass {
-public:
+private:
+    float filterScale = 0.10;
+    float filterContrast = 1;
     cv::Mat lab, lowpass, highpass;
-    vector<cv::Mat> labChannels;
+    std::vector<cv::Mat> labChannels;
     
-    void filter(cv::Mat& mat, float filterSize, float contrast=1) {
-        if(filterSize == 0) {
-            return;
-        }
-        
-        // size is a ratio of the largest side
-        filterSize *= std::max(mat.rows, mat.cols);
-        
+public:
+    /// filterScale should be between 0 to 1
+    void setFilterScale(float filterScale) {
+        this->filterScale = filterScale;
+    }
+    
+    /// filterContrast should be between 0.1 to 10
+    void setFilterContrast(float filterContrast) {
+        this->filterContrast = filterContrast;
+    }
+    
+    void filter(cv::Mat& mat) {
         // allocate the first time
         lab.create(mat.size(), CV_8UC3);
         lowpass.create(mat.size(), CV_8UC1);
@@ -26,7 +32,8 @@ public:
         cv::split(lab, labChannels);
         const cv::Mat& lightness = labChannels[0];
         
-        // do lowpass filter
+        // do lowpass filter, filter size is a ratio of the largest side
+        unsigned int filterSize = filterScale * std::max(mat.rows, mat.cols);
         filterSize = ((filterSize / 2) * 2) + 1; // foce size to be odd
         cv::blur(lightness, lowpass, cv::Size(filterSize, filterSize));
         
@@ -38,7 +45,7 @@ public:
         cv::Scalar mean, stddev;
         cv::meanStdDev(highpass, mean, stddev);
         
-        double alpha = 128 * contrast / stddev[0];
+        double alpha = 128 * filterContrast / stddev[0];
         double beta = 128; // middle point of datatype
         highpass.convertTo(lightness, lightness.type(), alpha, beta);
 
