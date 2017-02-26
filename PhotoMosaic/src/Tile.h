@@ -13,13 +13,13 @@ private:
 public:
     
     Tile(const cv::Mat& mat, float weight=0);
+
+    /// Get the euclidean distance between two Tiles.
+    float operator-(const Tile& other) const;
     
-    /// Get the sum of all the colors (effectively average brightness).
-    unsigned int getColorSum() const;
+    /// Default sorting for Tiles is by brightness.
+    bool operator<(const Tile& other) const;
     
     /// Build a vector of Tiles from a perfectly-sized image.
     static std::vector<Tile> buildTiles(const cv::Mat& mat, int subsampling);
-    
-    /// Get the euclidean distance between two Tiles.
-    static float distance(const Tile& a, const Tile& b);
 };

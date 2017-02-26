@@ -8,15 +8,15 @@ Tile::Tile(const cv::Mat& mat, float weight) : weight(weight) {
 
 cv::Mat_<cv::Vec3i> diff;
 cv::Scalar total;
-float Tile::distance(const Tile& a, const Tile& b) {
-    cv::subtract(a.grid, b.grid, diff);
+float Tile::operator-(const Tile& other) const {
+    cv::subtract(grid, other.grid, diff);
     cv::multiply(diff, diff, diff);
     total = cv::sum(diff);
-    return (total[0] + total[1] + total[2]) * (a.weight + b.weight);
+    return (total[0] + total[1] + total[2]) * (weight + other.weight);
 }
 
-unsigned int Tile::getColorSum() const {
-    return colorSum;
+bool Tile::operator<(const Tile& other) const {
+    return colorSum < other.colorSum;
 }
 
 std::vector<Tile> Tile::buildTiles(const cv::Mat& mat, int subsampling) {
