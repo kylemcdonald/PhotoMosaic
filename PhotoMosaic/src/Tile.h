@@ -6,9 +6,9 @@
 /// A Tile is the moveable piece of a PhotoMosaic.
 class Tile {
 private:
-    cv::Mat_<cv::Vec3i> grid;
     unsigned int colorSum;
     float weight;
+    cv::Mat_<cv::Vec3i> grid;
     
 public:
     

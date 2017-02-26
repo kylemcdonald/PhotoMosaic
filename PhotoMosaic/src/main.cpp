@@ -8,6 +8,18 @@ void saveMat(const cv::Mat& mat, string filename) {
     ofSaveImage(pix, filename);
 }
 
+cv::Mat getMean(const vector<cv::Mat>& mats) {
+    if (mats.empty()) return cv::Mat();
+    cv::Mat sum = cv::Mat::zeros(mats[0].rows, mats[0].cols, CV_64FC3);
+    cv::Mat mat64;
+    for(auto& mat : mats) {
+        mat.convertTo(mat64, CV_64FC3);
+        cv::add(sum, mat64, sum);
+    }
+    sum.convertTo(sum, CV_8UC3, 1. / mats.size());
+    return sum;
+}
+
 cv::Point2f toCv(glm::vec2 v) {
     return cv::Point2f(v.x, v.y);
 }
@@ -179,7 +191,7 @@ public:
         
         transitionSeconds = 5;
         
-        matcher.setRefinementSteps(100000);
+        matcher.setRefinementSteps(1000000);
         highpass.setFilterScale(0.1);
         highpass.setFilterContrast(1.0);
         
@@ -286,6 +298,16 @@ public:
         ofLog() << "Resizing images into subsampled tiles.";
         vector<cv::Mat> smaller = batchResize(images, subsampling);
         
+        cv::Mat mean = getMean(smaller);
+        mean.convertTo(mean, CV_64FC3);
+        cv::Mat mat64;
+        for(auto& mat : smaller) {
+            mat.convertTo(mat64, CV_64FC3);
+            cv::subtract(mat64, mean, mat64);
+            mat64 += cv::Scalar(128, 128, 128);
+            mat64.convertTo(mat, CV_8UC3);
+        }
+        
         unsigned int nx = width / side;
         unsigned int ny = height / side;
         unsigned int n = nx * ny;
@@ -294,7 +316,7 @@ public:
             for(int x = 0; x < nx; x++) {
                 initialPositions.emplace_back(x*side, y*side);
                 unsigned int index = i % smaller.size();
-                sourceTiles.emplace_back(smaller[index], 1);
+                sourceTiles.emplace_back(smaller[index]);
                 i++;
             }
         }
