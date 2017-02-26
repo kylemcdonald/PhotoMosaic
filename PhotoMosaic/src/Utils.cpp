@@ -106,3 +106,17 @@ std::vector<cv::Mat> batchResize(const std::vector<cv::Mat>& src, unsigned int s
     }
     return dst;
 }
+
+cv::Mat getRegionWithRatio(const cv::Mat& mat, float aspectRatio) {
+    int w = mat.cols, h = mat.rows;
+    float currentAspectRatio = float(w) / h;
+    if(aspectRatio > currentAspectRatio) { // if aspect ratio is wider than mat
+        h = w / aspectRatio; // make mat height smaller
+    } else if(aspectRatio < currentAspectRatio) { // if aspect ratio is narrower than mat
+        w = h * aspectRatio; // make mat width smaller
+    }
+    // center the crop
+    int x = (mat.cols - w) / 2;
+    int y = (mat.rows - h) / 2;
+    return mat(cv::Rect(x, y, w, h));
+}

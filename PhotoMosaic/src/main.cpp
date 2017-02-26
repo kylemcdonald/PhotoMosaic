@@ -66,6 +66,7 @@ private:
     
     Matcher matcher;
     Highpass highpass;
+    cv::Mat dst;
     
     cv::Mat atlas;
     std::vector<cv::Point2i> atlasPositions;
@@ -105,30 +106,15 @@ public:
         }
     }
     
-    // this should be a cv::Mat
-    const std::vector<unsigned int>& match(string filename) {
+    const std::vector<unsigned int>& match(const cv::Mat& mat) {
+        int w = subsampling * nx;
+        int h = subsampling * ny;
         
-        ofPixels image;
-        ofLoadImage(image, filename);
-        image.setImageType(OF_IMAGE_COLOR);
+        cv::Mat crop(getRegionWithRatio(mat, float(width) / height));
+        cv::resize(crop, dst, cv::Size(w, h), 0, 0, cv::INTER_AREA);
         
-        cv::Mat mat(image.getHeight(), image.getWidth(), CV_8UC3, image.getData(), 0);
-        
-        // the above should be swapped out with this:
-//        cv::Mat mat = loadMat(filename);
-        
-        ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
-        ofRectangle targetRect(0, 0, width, height);
-        targetRect.scaleTo(originalRect, OF_SCALEMODE_FIT);
-        
-        cv::Mat resized;
-        cv::Mat cropped(mat(cv::Rect(targetRect.x, targetRect.y, targetRect.width, targetRect.height)));
-        int w = subsampling * (width / side);
-        int h = subsampling * (height / side);
-        cv::resize(cropped, resized, cv::Size(w, h), 0, 0, cv::INTER_AREA);
-        
-        highpass.filter(resized);
-        std::vector<Tile> dstTiles = Tile::buildTiles(resized, subsampling);
+        highpass.filter(dst);
+        std::vector<Tile> dstTiles = Tile::buildTiles(dst, subsampling);
         
         matchedIndices = matcher.match(srcTiles, dstTiles);
         
@@ -170,11 +156,9 @@ public:
         photomosaic.setRefinementSteps(1000000);
         photomosaic.setFilterScale(0.1);
         photomosaic.setFilterContrast(1.0);
+        photomosaic.setIcons(loadImages("db-trimmed"));
         
-        std::vector<cv::Mat> icons = loadImages("db-trimmed");
-        
-        photomosaic.setIcons(icons);
-        
+        // copy the atlas to a texture for rendering later
         ofPixels atlasPix;
         const cv::Mat& atlasMat = photomosaic.getAtlas();
         atlasPix.setFromExternalPixels(atlasMat.data, atlasMat.cols, atlasMat.rows, OF_PIXELS_RGB);
@@ -197,8 +181,9 @@ public:
         
         transitionInProcess = true;
         
+        vector<unsigned int> matchedIndices = photomosaic.match(loadMat(filename));
+        
         int width = photomosaic.getWidth(), height = photomosaic.getHeight();
-        vector<unsigned int> matchedIndices = photomosaic.match(filename);
         const std::vector<cv::Point2i>& screenPositions = photomosaic.getScreenPositions();
         int n = matchedIndices.size();
         

@@ -30,3 +30,6 @@ cv::Mat buildAtlas(const std::vector<cv::Mat>& images, unsigned int side, std::v
 
 /// Batch resize a collection of cv::Mat images to be size (side x side).
 std::vector<cv::Mat> batchResize(const std::vector<cv::Mat>& src, unsigned int side);
+
+/// Return a full-image region of interest from the mat with a given aspect ratio.
+cv::Mat getRegionWithRatio(const cv::Mat& mat, float aspectRatio);
