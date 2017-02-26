@@ -6,6 +6,7 @@ The loading code assumes that all icons are square.
 
 - Break out the timer into a separate class.
 - Create a Photomosaic class for capturing what the app is orchestrating right now.
+- Break out photo cropping and resizing.
 
 Finishing for mobile:
 
