@@ -228,13 +228,7 @@ public:
 //        ofSaveImage(pix, "debug-filtered.tiff");
         
         ofLog() << "Running matcher.";
-        auto start = ofGetElapsedTimeMicros();
         matchedIndices = matcher.match(sourceTiles, destTiles);
-        auto stop = ofGetElapsedTimeMicros();
-        ofLog() << (stop - start) << "us total for matching";
-        ofLog() << float(stop - start) / matcher.refinementSteps << "us per iteration";
-        
-//        std::random_shuffle(matchedIndices.begin(), matchedIndices.end());
         
         ofLog() << "Computing transitions.";
         glm::vec2 center = glm::vec2(width, height) / 2;
