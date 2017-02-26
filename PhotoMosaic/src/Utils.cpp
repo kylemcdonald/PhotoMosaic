@@ -29,26 +29,22 @@ float lerp(float start, float stop, float amt) {
     return start + (stop-start) * amt;
 }
 
-cv::Vec2f manhattanLerp(cv::Vec2f begin, cv::Vec2f end, float t) {
-    float& bx = begin[0], by = begin[1];
-    float& ex = end[0], ey = end[1];
-    float dx = fabs(bx - ex);
-    float dy = fabs(by - ey);
+cv::Point2f manhattanLerp(cv::Point2f begin, cv::Point2f end, float t) {
+    float dx = fabs(begin.x - end.x);
+    float dy = fabs(begin.y - end.y);
     float dd = dx + dy;
     float dc = dd * t;
     if(dc < dx) { // lerp dx
         float dt = dc / dx;
-        return cv::Vec2f(lerp(bx, ex, dt), by);
+        return cv::Point2f(lerp(begin.x, end.x, dt), begin.y);
     } else if(dc < dd) { // lerp dy
         float dt = (dc - dx) / dy;
-        return cv::Vec2f(ex, lerp(by, ey, dt));
+        return cv::Point2f(end.x, lerp(begin.y, end.y, dt));
     } else { // when dy or dx+dy is zero
-        return cv::Vec2f(ex, ey);
+        return cv::Point2f(end.x, end.y);
     }
 }
 
-cv::Vec2f euclideanLerp(cv::Vec2f begin, cv::Vec2f end, float t) {
-    float& bx = begin[0], by = begin[1];
-    float& ex = end[0], ey = end[1];
-    return cv::Vec2f(lerp(bx,ex,t), lerp(by,ey,t));
+cv::Point2f euclideanLerp(cv::Point2f begin, cv::Point2f end, float t) {
+    return cv::Point2f(lerp(begin.x,end.x,t), lerp(begin.y,end.y,t));
 }

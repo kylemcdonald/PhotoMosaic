@@ -2,23 +2,24 @@
 
 const int subsampling = 3;
 
-/// Get the perceptual difference between two colors.
-inline long getCost(const cv::Vec3b& c1, const cv::Vec3b& c2) {
-    long rmean = ((long) c1[0] + (long) c2[0]) / 2;
-    long r = (long) c1[0] - (long) c2[0];
-    long g = (long) c1[1] - (long) c2[1];
-    long b = (long) c1[2] - (long) c2[2];
-    return ((((512 + rmean)*r*r)>>8) + 4*g*g + (((767-rmean)*b*b)>>8));
+Tile::Tile(const cv::Mat& mat, float weight) : weight(weight) {
+    grid = mat.reshape(0, 1);
+    cv::Scalar sumScalar = cv::sum(grid);
+    colorSum = sumScalar[0] + sumScalar[1] + sumScalar[2];
 }
 
-/// Get the perceptual difference between two tiles.
+/// Get the euclidean difference between two tiles.
+cv::Mat_<cv::Vec3i> diff;
+cv::Scalar total;
 float Tile::getCost(const Tile& a, const Tile& b) {
-    const int n = subsampling * subsampling;
-    unsigned long total = 0;
-    for(int i = 0; i < n; i++) {
-        total += ::getCost(a.grid[i], b.grid[i]);
-    }
-    return total * (a.weight + b.weight);
+    cv::subtract(a.grid, b.grid, diff);
+    cv::multiply(diff, diff, diff);
+    total = cv::sum(diff);
+    return (total[0] + total[1] + total[2]) * (a.weight + b.weight);
+}
+
+unsigned int Tile::getColorSum() const {
+    return colorSum;
 }
 
 std::vector<Tile> Tile::buildTiles(const cv::Mat& mat) {
@@ -35,7 +36,7 @@ std::vector<Tile> Tile::buildTiles(const cv::Mat& mat) {
             // copy the current region of interest to a new cv::Mat to make it continuous
             mat(cv::Rect(x, y, subsampling, subsampling)).copyTo(roi);
             float distanceFromCenter = cv::norm(center - cv::Vec2f(x, y)) / maxDistance;
-            tiles.emplace_back(roi.reshape(0, 1), 1 - distanceFromCenter);
+            tiles.emplace_back(roi, 1 - distanceFromCenter);
         }
     }
     return tiles;

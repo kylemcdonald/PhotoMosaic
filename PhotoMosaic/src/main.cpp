@@ -8,8 +8,8 @@ void saveMat(const cv::Mat& mat, string filename) {
     ofSaveImage(pix, filename);
 }
 
-cv::Vec2f toCv(glm::vec2 v) {
-    return cv::Vec2f(v.x, v.y);
+cv::Point2f toCv(glm::vec2 v) {
+    return cv::Point2f(v.x, v.y);
 }
 
 vector<cv::Mat> loadImages(string directory) {
@@ -26,17 +26,22 @@ vector<cv::Mat> loadImages(string directory) {
     return mats;
 }
 
-cv::Mat buildAtlas(const vector<cv::Mat>& images, unsigned int tileSize) {
+cv::Mat buildAtlas(const vector<cv::Mat>& images, unsigned int side, std::vector<cv::Point2i>& positions) {
+    cv::Mat atlas;
     unsigned int n = images.size();
     int nx = ceilf(sqrtf(n));
     int ny = ceilf(float(n) / nx);
-    cv::Mat atlas(ny * tileSize, nx * tileSize, CV_8UC3); // allocate atlas
+    positions.resize(n);
+    atlas.create(ny * side, nx * side, CV_8UC3); // allocate atlas
     atlas = cv::Scalar(255, 255, 255); // set to white
-    cv::Size dsize(tileSize, tileSize);
+    cv::Size wh(side, side);
     unsigned int x = 0, y = 0;
     for(unsigned int i = 0; i < n; i++) {
-        cv::Mat roi(atlas, cv::Rect(x * tileSize, y * tileSize, tileSize, tileSize));
-        cv::resize(images[i], roi, dsize, cv::INTER_AREA);
+        float xs = x * side, ys = y * side;
+        cv::Mat roi(atlas, cv::Rect(xs, ys, side, side));
+        cv::resize(images[i], roi, wh, cv::INTER_AREA);
+        positions[i].x = xs;
+        positions[i].y = ys;
         x++;
         if(x == nx) {
             x = 0;
@@ -44,6 +49,17 @@ cv::Mat buildAtlas(const vector<cv::Mat>& images, unsigned int tileSize) {
         }
     }
     return atlas;
+}
+
+vector<cv::Mat> batchResize(const vector<cv::Mat>& src, unsigned int side) {
+    unsigned int n = src.size();
+    cv::Size wh(side, side);
+    vector<cv::Mat> dst(n);
+    for(unsigned int i = 0; i < n; i++) {
+        dst[i].create(wh, CV_8UC3);
+        cv::resize(src[i], dst[i], wh, 0, 0, cv::INTER_AREA);
+    }
+    return dst;
 }
 
 vector<ofFile> listImages(string directory) {
@@ -126,9 +142,10 @@ class ofApp : public ofBaseApp {
 public:
     int side, width, height;
     
-    ofImage source;
-    vector<Tile> sourceTiles;
-    vector<glm::vec2> initialPositions;
+    ofTexture atlas;
+    vector<Tile> sourceTiles; // length is number of total tiles
+    vector<glm::vec2> initialPositions; // length is number of total tiles
+    vector<cv::Point2i> atlasPositions; // length is number of unique icons
     
     vector<unsigned int> matchedIndices;
     vector<glm::vec2> beginPositions, endPositions;
@@ -162,11 +179,11 @@ public:
         
         transitionSeconds = 5;
         
-        matcher.setStepTotal(1000000);
+        matcher.setRefinementSteps(100000);
         highpass.setFilterScale(0.1);
         highpass.setFilterContrast(1.0);
         
-        setupSource();
+        setupAtlas();
     }
     void keyPressed(int key) {
         switch (key) {
@@ -190,7 +207,6 @@ public:
         }
         image.setImageType(OF_IMAGE_COLOR);
         
-        // get cv::Mat from src and dst
         cv::Mat mat(image.getHeight(), image.getWidth(), CV_8UC3, image.getData(), 0);
         
         ofRectangle originalRect(0, 0, image.getWidth(), image.getHeight());
@@ -204,15 +220,23 @@ public:
         cv::resize(cropped, resized, cv::Size(w, h), 0, 0, cv::INTER_AREA);
         
         highpass.filter(resized);
-        ofLog() << "resized to " << w << "x" << h;
+        ofLog() << "Resized to " << w << "x" << h;
         std::vector<Tile> destTiles = Tile::buildTiles(resized);
         
-        ofPixels pix;
-        pix.setFromExternalPixels(resized.data, resized.cols, resized.rows, OF_PIXELS_RGB);
-        ofSaveImage(pix, "debug-filtered.tiff");
+//        ofPixels pix;
+//        pix.setFromExternalPixels(resized.data, resized.cols, resized.rows, OF_PIXELS_RGB);
+//        ofSaveImage(pix, "debug-filtered.tiff");
         
+        ofLog() << "Running matcher.";
+        auto start = ofGetElapsedTimeMicros();
         matchedIndices = matcher.match(sourceTiles, destTiles);
+        auto stop = ofGetElapsedTimeMicros();
+        ofLog() << (stop - start) << "us total for matching";
+        ofLog() << float(stop - start) / matcher.refinementSteps << "us per iteration";
         
+//        std::random_shuffle(matchedIndices.begin(), matchedIndices.end());
+        
+        ofLog() << "Computing transitions.";
         glm::vec2 center = glm::vec2(width, height) / 2;
         float diagonal = sqrt(width*width + height*height) / 2;
         bool topDown = ofRandomuf() < .5;
@@ -239,6 +263,8 @@ public:
         }
         
         lastTransitionStart = ofGetElapsedTimeMillis();
+        
+        ofLog() << "Starting transition.";
     }
     void updateTransition() {
         float transitionPrev = transitionStatus;
@@ -252,56 +278,30 @@ public:
     void transitionFinished() {
         
     }
-    void setupSource() {
-        bool rebuild = false;
-
-        ofFile sourceFile("source.tiff");
-        if(sourceFile.exists()) {
-            ofLog() << "Loading source.";
-            source.load(sourceFile.path());
-            ofLog() << "Loaded source.";
-            if(source.getWidth() != width || source.getHeight() != height) {
-                ofLog() << "Source does not match current width and height.";
-                rebuild = true;
-            }
-        } else {
-            rebuild = true;
-        }
+    void setupAtlas() {
+        ofLog() << "Loading images.";
+        std::vector<cv::Mat> images = loadImages("db-trimmed");
         
-        if(rebuild) {
-            ofLog() << "Rebuilding source.";
-            source = ofImage(buildGrid("db-trimmed", width, height, side));
-            ofLog() << "Rebuilt source.";
-        }
+        ofLog() << "Building atlas from images.";
+        cv::Mat atlasMat = buildAtlas(images, side, atlasPositions);
         
-        source.save(sourceFile);
-        cv::Mat input(source.getHeight(), source.getWidth(), CV_8UC3, source.getPixels().getData(), 0);
-        int sw = input.cols, sh = input.rows;
-        float subsample = (float) side / subsampling;
-        int w = (sw * subsampling) / side;
-        int h = (sh * subsampling) / side;
+        ofPixels atlasPix;
+        atlasPix.setFromExternalPixels(atlasMat.data, atlasMat.cols, atlasMat.rows, OF_PIXELS_RGB);
+        atlas.allocate(atlasPix);
         
-        cv::Mat mat;
-        std::cout << "converting to " << w << " x " << h << std::endl;
-        cv::resize(input, mat, cv::Size(w, h), 0, 0, cv::INTER_AREA);
-        
-        ofPixels pix;
-        pix.setFromExternalPixels(mat.data, mat.cols, mat.rows, OF_PIXELS_RGB);
-        ofSaveImage(pix, "debug-source.tiff");
-        
-        sourceTiles = Tile::buildTiles(mat);
-        
-        //
-        
-        std::vector<cv::Mat> mats = loadImages("db-trimmed");
-        cv::Mat displayMat = buildAtlas(mats, side);
-        saveMat(displayMat, "atlas.tiff");
+        ofLog() << "Resizing images into subsampled tiles.";
+        vector<cv::Mat> smaller = batchResize(images, subsampling);
         
         unsigned int nx = width / side;
         unsigned int ny = height / side;
+        unsigned int n = nx * ny;
+        unsigned int i = 0;
         for(int y = 0; y < ny; y++) {
             for(int x = 0; x < nx; x++) {
                 initialPositions.emplace_back(x*side, y*side);
+                unsigned int index = i % smaller.size();
+                sourceTiles.emplace_back(smaller[index], 1);
+                i++;
             }
         }
         beginPositions = initialPositions;
@@ -320,15 +320,15 @@ public:
         for(int i = 0; i < n; i++) {
             glm::vec2& begin = beginPositions[i], end = endPositions[i];
             float t = ofMap(transitionStatus, transitionBegin[i], transitionEnd[i], 0, 1, true);
-            cv::Vec2f lerp = transitionManhattan ?
+            cv::Point2f lerp = transitionManhattan ?
                 manhattanLerp(toCv(begin), toCv(end), smoothstep(t)) :
                 euclideanLerp(toCv(begin), toCv(end), smoothstep(t));
-            glm::vec2 s = initialPositions[i];
-            addSubsection(mesh, source.getTexture(), lerp[0], lerp[1], side, side, s.x, s.y);
+            cv::Point2i s = atlasPositions[i % atlasPositions.size()];
+            addSubsection(mesh, atlas, lerp.x, lerp.y, side, side, s.x, s.y);
         }
-        source.bind();
+        atlas.bind();
         mesh.drawFaces();
-        source.unbind();
+        atlas.unbind();
     }
 };
 

@@ -3,16 +3,17 @@
 #include <vector>
 #include "opencv2/opencv.hpp"
 
-/// A Tile is the smallest piece of a PhotoMosaic.
+/// A Tile is the moveable piece of a PhotoMosaic.
 class Tile {
-public:
-    std::vector<cv::Vec3b> grid;
+private:
+    cv::Mat_<cv::Vec3i> grid;
+    unsigned int colorSum;
     float weight;
     
-    Tile(const std::vector<cv::Vec3b>& grid, float weight)
-    :grid(grid)
-    ,weight(weight) {
-    }
+public:
+    
+    Tile(const cv::Mat& mat, float weight=0);
+    unsigned int getColorSum() const;
     static std::vector<Tile> buildTiles(const cv::Mat& mat);
     static float getCost(const Tile& a, const Tile& b);
 };

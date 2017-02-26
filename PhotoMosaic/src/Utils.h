@@ -14,7 +14,7 @@ cv::Rect getCenterSquare(int width, int height);
 std::vector<std::pair<int, int>> buildGrid(int width, int height, int side);
 
 /// Interpolates along x then along y, linearly.
-cv::Vec2f manhattanLerp(cv::Vec2f begin, cv::Vec2f end, float t);
+cv::Point2f manhattanLerp(cv::Point2f begin, cv::Point2f end, float t);
 
 /// Interpolates along a line from begin to end.
-cv::Vec2f euclideanLerp(cv::Vec2f begin, cv::Vec2f end, float t);
+cv::Point2f euclideanLerp(cv::Point2f begin, cv::Point2f end, float t);
