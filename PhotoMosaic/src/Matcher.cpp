@@ -8,6 +8,10 @@ void Matcher::setRefinementSteps(unsigned int refinementSteps) {
     this->refinementSteps = refinementSteps;
 }
 
+void Matcher::setMaximumDuration(float maximumDurationSeconds) {
+    this->maximumDurationSeconds = maximumDurationSeconds;
+}
+
 typedef std::pair<unsigned int, unsigned int> IndexedTile;
 std::vector<unsigned int> getSortedTileIndices(const std::vector<Tile>& tiles) {
     unsigned int n = tiles.size();
@@ -24,16 +28,25 @@ std::vector<unsigned int> getSortedTileIndices(const std::vector<Tile>& tiles) {
     return indices;
 }
 
+using namespace std::chrono;
 std::vector<unsigned int> Matcher::match(const std::vector<Tile>& src, const std::vector<Tile>& dst) {
+    auto start = steady_clock::now();
     unsigned int n = dst.size();
+    
+    // sort all the incoming tiles by their overall brightness
     std::vector<unsigned int> srcIndices = getSortedTileIndices(src);
     std::vector<unsigned int> dstIndices = getSortedTileIndices(dst);
+    
+    // use the sorted tiles to set the initial indices
     std::vector<unsigned int> indices(n);
     for(int i = 0; i < n; i++) {
         indices[srcIndices[i]] = dstIndices[i];
     }
+    
     std::uniform_int_distribution<> dis(0, n-1);
+    unsigned int checkDurationInterval = 1000;
     for(stepCurrent = 0; stepCurrent < refinementSteps; stepCurrent++) {
+        // randomly select tile pairs and swap them when it works better
         unsigned int a = dis(gen);
         unsigned int b = dis(gen);
         if (a == b) continue;
@@ -47,6 +60,15 @@ std::vector<unsigned int> Matcher::match(const std::vector<Tile>& src, const std
         long swpsum = Tile::getCost(srca, dstb) + Tile::getCost(srcb, dsta);
         if(swpsum < cursum) {
             std::swap(ia, ib);
+        }
+        
+        // check the duration and break if matching has taken too long
+        if(stepCurrent % checkDurationInterval == 0) {
+            auto stop = std::chrono::steady_clock::now();
+            float elapsed = duration_cast<duration<float>>(stop - start).count();
+            if(elapsed > maximumDurationSeconds) {
+                break;
+            }
         }
     }
     return indices;
