@@ -2,125 +2,36 @@
 #include "Utils.h"
 #include "ofMain.h"
 
-void saveMat(const cv::Mat& mat, string filename) {
+/// Load an RGB image from disk.
+cv::Mat loadMat(std::string filename) {
+    ofPixels pix;
+    ofLoadImage(pix, filename);
+    pix.setImageType(OF_IMAGE_COLOR); // guarantee it's RGB
+    cv::Mat mat(pix.getHeight(), pix.getWidth(), CV_8UC3, pix.getData(), 0);
+    return mat.clone();
+}
+
+/// Save an RGB image to disk.
+void saveMat(const cv::Mat& mat, std::string filename) {
     ofPixels pix;
     pix.setFromExternalPixels(mat.data, mat.cols, mat.rows, OF_PIXELS_RGB);
     ofSaveImage(pix, filename);
 }
 
-cv::Mat getMean(const vector<cv::Mat>& mats) {
-    if (mats.empty()) return cv::Mat();
-    cv::Mat sum = cv::Mat::zeros(mats[0].rows, mats[0].cols, CV_64FC3);
-    cv::Mat mat64;
-    for(auto& mat : mats) {
-        mat.convertTo(mat64, CV_64FC3);
-        cv::add(sum, mat64, sum);
-    }
-    sum.convertTo(sum, CV_8UC3, 1. / mats.size());
-    return sum;
-}
-
+/// Convert from glm::vec2 to cv::Point2f
 cv::Point2f toCv(glm::vec2 v) {
     return cv::Point2f(v.x, v.y);
 }
 
-vector<cv::Mat> loadImages(string directory) {
-    vector<cv::Mat> mats;
+/// Load all the .png images in a directory and return them as std::vector<cv::Mat>
+std::vector<cv::Mat> loadImages(std::string directory) {
+    std::vector<cv::Mat> mats;
     ofDirectory dir(directory);
     dir.allowExt("png");
     for(auto file : dir.getFiles()) {
-        ofPixels pix;
-        ofLoadImage(pix, file.path());
-        pix.setImageType(OF_IMAGE_COLOR);
-        cv::Mat mat(pix.getHeight(), pix.getWidth(), CV_8UC3, pix.getData(), 0);
-        mats.push_back(mat.clone());
+        mats.push_back(loadMat(file.path()));
     }
     return mats;
-}
-
-cv::Mat buildAtlas(const vector<cv::Mat>& images, unsigned int side, std::vector<cv::Point2i>& positions) {
-    cv::Mat atlas;
-    unsigned int n = images.size();
-    int nx = ceilf(sqrtf(n));
-    int ny = ceilf(float(n) / nx);
-    positions.resize(n);
-    atlas.create(ny * side, nx * side, CV_8UC3); // allocate atlas
-    atlas = cv::Scalar(255, 255, 255); // set to white
-    cv::Size wh(side, side);
-    unsigned int x = 0, y = 0;
-    for(unsigned int i = 0; i < n; i++) {
-        float xs = x * side, ys = y * side;
-        cv::Mat roi(atlas, cv::Rect(xs, ys, side, side));
-        cv::resize(images[i], roi, wh, cv::INTER_AREA);
-        positions[i].x = xs;
-        positions[i].y = ys;
-        x++;
-        if(x == nx) {
-            x = 0;
-            y++;
-        }
-    }
-    return atlas;
-}
-
-vector<cv::Mat> batchResize(const vector<cv::Mat>& src, unsigned int side) {
-    unsigned int n = src.size();
-    cv::Size wh(side, side);
-    vector<cv::Mat> dst(n);
-    for(unsigned int i = 0; i < n; i++) {
-        dst[i].create(wh, CV_8UC3);
-        cv::resize(src[i], dst[i], wh, 0, 0, cv::INTER_AREA);
-    }
-    return dst;
-}
-
-vector<ofFile> listImages(string directory) {
-    ofDirectory dir(directory);
-    dir.allowExt("jpg");
-    dir.allowExt("jpeg");
-    dir.allowExt("png");
-    vector<ofFile> files = dir.getFiles();
-    ofLog() << "Listed " << files.size() << " files in " << directory << ".";
-    return files;
-}
-
-void drawCenterSquare(const ofImage& img, float x, float y, float side) {
-    cv::Rect crop = getCenterSquare(img.getWidth(), img.getHeight());
-    img.drawSubsection(x, y, side, side, crop.x, crop.y, crop.width, crop.height);
-}
-
-ofPixels buildGrid(string dir, int width, int height, int side) {
-    auto files = listImages(dir);
-    
-    ofFbo buffer;
-    
-    ofFbo::Settings settings;
-    settings.width = width;
-    settings.height = height;
-    settings.useDepth = false;
-    buffer.allocate(settings);
-    
-    ofImage img;
-    buffer.begin();
-    ofClear(255, 255, 255, 255);
-    auto filesitr = files.begin();
-    for(auto& position : buildGrid(width, height, side)) {
-        int x = position.first;
-        int y = position.second;
-        if(img.load(filesitr->path())) {
-            drawCenterSquare(img, x, y, side);
-        }
-        filesitr++;
-        if(filesitr == files.end()) {
-            filesitr = files.begin();
-        }
-    }
-    buffer.end();
-    
-    ofPixels out;
-    buffer.readToPixels(out);
-    out.setImageType(OF_IMAGE_COLOR);
-    return out;
 }
 
 /// Add a subsection of tex to a mesh as two triangles.
@@ -152,18 +63,19 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
 
 class ofApp : public ofBaseApp {
 public:
-    int side, width, height;
+    int side = 32;
+    int subsampling = 3;
     
-    ofTexture atlas;
+    int width, height;
+    
+    ofTexture atlas; // used for rendering
     vector<Tile> sourceTiles; // length is number of total tiles
     vector<glm::vec2> initialPositions; // length is number of total tiles
     vector<cv::Point2i> atlasPositions; // length is number of unique icons
     
     vector<unsigned int> matchedIndices;
     vector<glm::vec2> beginPositions, endPositions;
-    
     vector<float> transitionBegin, transitionEnd;
-    uint64_t lastReceived = 0;
     uint64_t lastTransitionStart = 0;
     float transitionStatus = 1;
     bool transitionInProcess = false;
@@ -174,14 +86,10 @@ public:
     Matcher matcher;
     Highpass highpass;
     
-    unsigned int subsampling;
-    
     void setup() {
         ofSetBackgroundAuto(false);
         ofSetVerticalSync(true);
         
-        side = 32;
-        subsampling = 3;
         width = ofGetWidth();
         height = ofGetHeight();
         
@@ -198,24 +106,22 @@ public:
         setupAtlas();
     }
     void keyPressed(int key) {
-        switch (key) {
-            case 'f': ofToggleFullscreen(); break;
-            case ' ': loadPortrait("portraits/img.jpg"); break;
+        if(key == ' ') {
+            loadPortrait("portraits/img.jpg");
         }
     }
     void loadPortrait(string filename) {
         if(transitionInProcess) return;
         
         transitionInProcess = true;
-        lastReceived = ofGetElapsedTimeMillis();
         
         ofPixels image;
-        ofLog() << "Loading image " << filename;
+        std::cout << "Loading image " << filename << std::endl;
         if(!ofLoadImage(image, filename)) {
-            ofLogError() << "Error loading image " << filename;
+            std::cerr << "Error loading image " << filename << std::endl;
             return;
         } else {
-            ofLog() << "Image loaded";
+            std::cout << "Image loaded" << std::endl;
         }
         image.setImageType(OF_IMAGE_COLOR);
         
@@ -232,17 +138,13 @@ public:
         cv::resize(cropped, resized, cv::Size(w, h), 0, 0, cv::INTER_AREA);
         
         highpass.filter(resized);
-        ofLog() << "Resized to " << w << "x" << h;
-        std::vector<Tile> destTiles = Tile::buildTiles(resized);
+        std::cout << "Resized to " << w << "x" << h << std::endl;
+        std::vector<Tile> destTiles = Tile::buildTiles(resized, subsampling);
         
-//        ofPixels pix;
-//        pix.setFromExternalPixels(resized.data, resized.cols, resized.rows, OF_PIXELS_RGB);
-//        ofSaveImage(pix, "debug-filtered.tiff");
-        
-        ofLog() << "Running matcher.";
+        std::cout << "Running matcher." << std::endl;
         matchedIndices = matcher.match(sourceTiles, destTiles);
         
-        ofLog() << "Computing transitions.";
+        std::cout << "Computing transitions." << std::endl;
         glm::vec2 center = glm::vec2(width, height) / 2;
         float diagonal = sqrt(width*width + height*height) / 2;
         bool topDown = ofRandomuf() < .5;
@@ -270,7 +172,7 @@ public:
         
         lastTransitionStart = ofGetElapsedTimeMillis();
         
-        ofLog() << "Starting transition.";
+        std::cout << "Starting transition." << std::endl;
     }
     void updateTransition() {
         float transitionPrev = transitionStatus;
@@ -285,28 +187,19 @@ public:
         
     }
     void setupAtlas() {
-        ofLog() << "Loading images.";
+        std::cout << "Loading images." << std::endl;
         std::vector<cv::Mat> images = loadImages("db-trimmed");
         
-        ofLog() << "Building atlas from images.";
+        std::cout << "Building atlas from images." << std::endl;
         cv::Mat atlasMat = buildAtlas(images, side, atlasPositions);
         
         ofPixels atlasPix;
         atlasPix.setFromExternalPixels(atlasMat.data, atlasMat.cols, atlasMat.rows, OF_PIXELS_RGB);
         atlas.allocate(atlasPix);
         
-        ofLog() << "Resizing images into subsampled tiles.";
+        std::cout << "Resizing images into subsampled tiles." << std::endl;
         vector<cv::Mat> smaller = batchResize(images, subsampling);
-        
-        cv::Mat mean = getMean(smaller);
-        mean.convertTo(mean, CV_64FC3);
-        cv::Mat mat64;
-        for(auto& mat : smaller) {
-            mat.convertTo(mat64, CV_64FC3);
-            cv::subtract(mat64, mean, mat64);
-            mat64 += cv::Scalar(128, 128, 128);
-            mat64.convertTo(mat, CV_8UC3);
-        }
+        subtractMean(smaller);
         
         unsigned int nx = width / side;
         unsigned int ny = height / side;

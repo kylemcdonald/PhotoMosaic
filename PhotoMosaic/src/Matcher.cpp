@@ -56,8 +56,8 @@ std::vector<unsigned int> Matcher::match(const std::vector<Tile>& src, const std
         unsigned int& ib = indices[b];
         const Tile& dsta = dst[ia];
         const Tile& dstb = dst[ib];
-        long cursum = Tile::getCost(srca, dsta) + Tile::getCost(srcb, dstb);
-        long swpsum = Tile::getCost(srca, dstb) + Tile::getCost(srcb, dsta);
+        long cursum = Tile::distance(srca, dsta) + Tile::distance(srcb, dstb);
+        long swpsum = Tile::distance(srca, dstb) + Tile::distance(srcb, dsta);
         if(swpsum < cursum) {
             std::swap(ia, ib);
         }

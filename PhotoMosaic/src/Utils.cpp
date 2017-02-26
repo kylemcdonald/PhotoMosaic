@@ -48,3 +48,61 @@ cv::Point2f manhattanLerp(cv::Point2f begin, cv::Point2f end, float t) {
 cv::Point2f euclideanLerp(cv::Point2f begin, cv::Point2f end, float t) {
     return cv::Point2f(lerp(begin.x,end.x,t), lerp(begin.y,end.y,t));
 }
+
+cv::Mat getMean(const std::vector<cv::Mat>& mats) {
+    cv::Mat sum = cv::Mat::zeros(mats[0].rows, mats[0].cols, CV_32FC3);
+    cv::Mat matf;
+    for(auto& mat : mats) {
+        mat.convertTo(matf, CV_32FC3);
+        cv::add(matf, sum, sum);
+    }
+    sum /= mats.size();
+    return sum;
+}
+
+void subtractMean(std::vector<cv::Mat>& mats) {
+    cv::Mat mean = getMean(mats);
+    cv::Mat matf;
+    for(auto& mat : mats) {
+        mat.convertTo(matf, CV_32FC3);
+        cv::subtract(matf, mean, matf);
+        matf += cv::Scalar(127, 127, 127);
+        matf.convertTo(mat, CV_8UC3);
+    }
+}
+
+cv::Mat buildAtlas(const std::vector<cv::Mat>& images, unsigned int side, std::vector<cv::Point2i>& positions) {
+    cv::Mat atlas;
+    unsigned int n = images.size();
+    int nx = ceilf(sqrtf(n));
+    int ny = ceilf(float(n) / nx);
+    positions.resize(n);
+    atlas.create(ny * side, nx * side, CV_8UC3);
+    atlas = cv::Scalar(255, 255, 255);
+    cv::Size wh(side, side);
+    unsigned int x = 0, y = 0;
+    for(unsigned int i = 0; i < n; i++) {
+        float xs = x * side, ys = y * side;
+        cv::Mat roi(atlas, cv::Rect(xs, ys, side, side));
+        cv::resize(images[i], roi, wh, cv::INTER_AREA);
+        positions[i].x = xs;
+        positions[i].y = ys;
+        x++;
+        if(x == nx) {
+            x = 0;
+            y++;
+        }
+    }
+    return atlas;
+}
+
+std::vector<cv::Mat> batchResize(const std::vector<cv::Mat>& src, unsigned int side) {
+    unsigned int n = src.size();
+    cv::Size wh(side, side);
+    std::vector<cv::Mat> dst(n);
+    for(unsigned int i = 0; i < n; i++) {
+        dst[i].create(wh, CV_8UC3);
+        cv::resize(src[i], dst[i], wh, 0, 0, cv::INTER_AREA);
+    }
+    return dst;
+}
