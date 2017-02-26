@@ -1,4 +1,5 @@
 #include "PhotoMosaic.h"
+#include "Utils.h"
 
 void PhotoMosaic::setup(int width, int height, int side, int subsampling) {
     this->subsampling = subsampling;

@@ -2,7 +2,6 @@
 
 #include "Matcher.h"
 #include "Highpass.h"
-#include "Utils.h"
 
 /// PhotoMosaic is composed of the Matcher and Highpass classes
 /// and handles interaction between these classes.

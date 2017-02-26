@@ -1,5 +1,5 @@
-#include "Utils.h"
 #include "PhotoMosaic.h"
+#include "Utils.h"
 #include "ofMain.h"
 
 /// Load an RGB image from disk.
