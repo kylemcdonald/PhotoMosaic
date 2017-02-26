@@ -23,12 +23,24 @@ private:
     std::vector<unsigned int> matchedIndices;
     
 public:
+    
+    /// Before using PhotoMosaic, you must call setup()
+    /// Optionally, you may also set options with setRefinementSteps(),
+    /// setFilterScale(), setFilterContrast(). And then load the icons
+    /// with setIcons().
     void setup(int width, int height, int side=32, int subsampling=3);
     void setRefinementSteps(int refinementSteps);
     void setFilterScale(float filterScale);
     void setFilterContrast(float filterContrast);
+    
+    /// setIcons() will automatically resize images as necessary,
+    /// but it assumes that the images are square. If they are not
+    /// square, they will be stretched/squashed to fit.
     void setIcons(const std::vector<cv::Mat>& icons);
     
+    /// After setting up PhotoMosaic call match() on an image.
+    /// If the image does not match the size or aspect ratio, then
+    /// match() will automatically crop into the image.
     const std::vector<unsigned int>& match(const cv::Mat& mat);
     
     int getWidth() const;
