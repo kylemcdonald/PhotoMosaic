@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Highpass.h"
 #include "Tile.h"
 #include <random>
 
@@ -30,8 +29,8 @@ public:
     /// Set the maximum duration in seconds for match()
     void setMaximumDuration(float maximumDurationSeconds);
     
-    /// Match two equal-length vectors of objects that have an operator-() and operator<()
-    /// Starts by sorting both sets and matching them up, then helpful random swaps.
+    /// Match up two equal-length vectors of Tiles.
+    /// Starts by sorting both sets and matching them up, then searches for good random swaps.
     std::vector<unsigned int> match(const std::vector<Tile>& src, const std::vector<Tile>& dst);
     
     /// When running match() in a thread, getProgress() is useful for reporting

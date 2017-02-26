@@ -1,5 +1,5 @@
-#include "Matcher.h"
 #include "Utils.h"
+#include "PhotoMosaic.h"
 #include "ofMain.h"
 
 /// Load an RGB image from disk.
@@ -55,81 +55,6 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
     mesh.addVertex(sep);
     mesh.addVertex(swp);
 }
-
-/// PhotoMosaic is composed of the Matcher and Highpass classes
-/// and handles interaction between these classes.
-class PhotoMosaic {
-private:
-    int side = 0, subsampling = 0;
-    int width = 0, height = 0;
-    int nx = 0, ny = 0;
-    
-    Matcher matcher;
-    Highpass highpass;
-    cv::Mat dst;
-    
-    cv::Mat atlas;
-    std::vector<cv::Point2i> atlasPositions;
-    vector<Tile> srcTiles;
-    vector<cv::Point2i> screenPositions;
-    vector<unsigned int> matchedIndices;
-    
-public:
-    void setup(int width, int height, int side=32, int subsampling=3) {
-        this->subsampling = subsampling;
-        this->side = side;
-        nx = width / side;
-        ny = height / side;
-        this->width = side * nx;
-        this->height = side * ny;
-        if (width != this->width || height != this->height) {
-            std::cout << width << "x" << height << " is not evenly divisible by " << side <<
-                ", using " << this->width << "x" << this->height << " instead" << std::endl;
-        }
-    }
-    void setRefinementSteps(int refinementSteps) { matcher.setRefinementSteps(refinementSteps); }
-    void setFilterScale(float filterScale) { highpass.setFilterScale(filterScale); }
-    void setFilterContrast(float filterContrast) { highpass.setFilterContrast(filterContrast); }
-    
-    void setIcons(const std::vector<cv::Mat>& icons) {
-        atlas = buildAtlas(icons, side, atlasPositions);
-        vector<cv::Mat> smaller = batchResize(icons, subsampling);
-        subtractMean(smaller);
-        unsigned int i = 0;
-        for(int y = 0; y < ny; y++) {
-            for(int x = 0; x < nx; x++) {
-                screenPositions.emplace_back(x*side, y*side);
-                unsigned int index = i % smaller.size();
-                srcTiles.emplace_back(smaller[index]);
-                i++;
-            }
-        }
-    }
-    
-    const std::vector<unsigned int>& match(const cv::Mat& mat) {
-        int w = subsampling * nx;
-        int h = subsampling * ny;
-        
-        cv::Mat crop(getRegionWithRatio(mat, float(width) / height));
-        cv::resize(crop, dst, cv::Size(w, h), 0, 0, cv::INTER_AREA);
-        
-        highpass.filter(dst);
-        std::vector<Tile> dstTiles = Tile::buildTiles(dst, subsampling);
-        
-        matchedIndices = matcher.match(srcTiles, dstTiles);
-        
-        return matchedIndices;
-    }
-    
-    int getWidth() const { return width; }
-    int getHeight() const { return height; }
-    int getSide() const { return side; }
-    int getSubsampling() const { return subsampling; }
-    
-    const cv::Mat& getAtlas() const { return atlas; }
-    const std::vector<cv::Point2i>& getAtlasPositions() const { return atlasPositions; }
-    const std::vector<cv::Point2i>& getScreenPositions() const { return screenPositions; }
-};
 
 class ofApp : public ofBaseApp {
 public:

@@ -11,7 +11,6 @@ private:
     float weight;
     
 public:
-    
     Tile(const cv::Mat& mat, float weight=0);
 
     /// Get the euclidean distance between two Tiles.

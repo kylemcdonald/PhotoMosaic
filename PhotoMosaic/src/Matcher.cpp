@@ -26,8 +26,6 @@ void Matcher::setMaximumDuration(float maximumDurationSeconds) {
     this->maximumDurationSeconds = maximumDurationSeconds;
 }
 
-/// Match two equal-length vectors of objects that have an operator-() and operator<()
-/// Starts by sorting both sets and matching them up, then helpful random swaps.
 std::vector<unsigned int> Matcher::match(const std::vector<Tile>& src, const std::vector<Tile>& dst) {
     using namespace std::chrono;
     auto start = steady_clock::now();
