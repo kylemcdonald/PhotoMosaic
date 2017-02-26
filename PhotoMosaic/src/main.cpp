@@ -57,15 +57,13 @@ void addSubsection(ofMesh& mesh, ofTexture& tex, float x, float y, float w, floa
 
 class ofApp : public ofBaseApp {
 public:
-    
-    ofTexture atlasTexture; // used for rendering
+    PhotoMosaic photomosaic;
+    ofTexture atlasTexture;
     
     float transitionDurationSeconds = 5;
     uint64_t lastTransitionStart = 0;
     float transitionStatus = 1;
     bool transitionInProcess = false;
-    
-    PhotoMosaic photomosaic;
     
     void setup() {
         ofSetBackgroundAuto(false);
@@ -95,6 +93,8 @@ public:
                                        ofRandomuf() < 0.5,
                                        ofRandomuf() < 0.5);
         photomosaic.match(loadMat(filename));
+        // this is how you build the result without drawing it:
+        // saveMat(photomosaic.buildResult(), "output.tiff");
         lastTransitionStart = ofGetElapsedTimeMillis();
     }
     void update() {
