@@ -142,11 +142,19 @@ void PhotoMosaic::setup(int width, int height, int side, int subsampling) {
         ", using " << this->width << "x" << this->height << " instead" << std::endl;
     }
 }
+
 void PhotoMosaic::setRefinementSteps(int refinementSteps) {
     if(refinementSteps < 0 || refinementSteps > 10000000) {
         throw std::out_of_range("refinementSteps is out of range");
     }
     matcher.setRefinementSteps(refinementSteps);
+}
+
+void PhotoMosaic::setMaximumDuration(float maximumDurationSeconds) {
+    if(maximumDurationSeconds < 0 || maximumDurationSeconds > 10) {
+        throw std::out_of_range("maximumDurationSeconds is out of range");
+    }
+    matcher.setMaximumDuration(maximumDurationSeconds);
 }
 
 void PhotoMosaic::setFilterScale(float filterScale) {

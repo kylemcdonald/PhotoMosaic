@@ -35,6 +35,7 @@ public:
     /// And then load the icons with setIcons().
     void setup(int width, int height, int side=32, int subsampling=3);
     void setRefinementSteps(int refinementSteps);
+    void setMaximumDuration(float maximumDurationSeconds);
     void setFilterScale(float filterScale);
     void setFilterContrast(float filterContrast);
     
