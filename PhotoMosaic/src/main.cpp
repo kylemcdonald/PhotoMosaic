@@ -1,5 +1,4 @@
 #include "PhotoMosaic.h"
-#include "Utils.h"
 #include "ofMain.h"
 
 /// Load an RGB image from disk.
@@ -61,15 +60,10 @@ public:
     
     ofTexture atlasTexture; // used for rendering
     
-    float transitionSeconds = 5; // this is variable
-    
-    vector<cv::Point2i> beginPositions, endPositions;
-    vector<float> transitionBegin, transitionEnd;
+    float transitionDurationSeconds = 5;
     uint64_t lastTransitionStart = 0;
     float transitionStatus = 1;
     bool transitionInProcess = false;
-    bool transitionCircle = false;
-    bool transitionManhattan = false;
     
     PhotoMosaic photomosaic;
     
@@ -81,20 +75,13 @@ public:
         photomosaic.setRefinementSteps(1000000);
         photomosaic.setFilterScale(0.1);
         photomosaic.setFilterContrast(1.0);
-        photomosaic.setIcons(loadImages("db-trimmed"));
+        photomosaic.setIcons(loadImages("db"));
         
         // copy the atlas to a texture for rendering later
         ofPixels atlasPix;
         const cv::Mat& atlasMat = photomosaic.getAtlas();
         atlasPix.setFromExternalPixels(atlasMat.data, atlasMat.cols, atlasMat.rows, OF_PIXELS_RGB);
         atlasTexture.allocate(atlasPix);
-        
-        beginPositions = photomosaic.getScreenPositions();
-        endPositions = photomosaic.getScreenPositions();
-        
-        int n = beginPositions.size();
-        transitionBegin = vector<float>(n, 0);
-        transitionEnd = vector<float>(n, 1);
     }
     void keyPressed(int key) {
         if(key == ' ') {
@@ -103,71 +90,32 @@ public:
     }
     void loadPortrait(string filename) {
         if(transitionInProcess) return;
-        
-        transitionInProcess = true;
-        
-        vector<unsigned int> matchedIndices = photomosaic.match(loadMat(filename));
-        
-        int width = photomosaic.getWidth(), height = photomosaic.getHeight();
-        const std::vector<cv::Point2i>& screenPositions = photomosaic.getScreenPositions();
-        int n = matchedIndices.size();
-        
-        cv::Point2i center(width / 2, height / 2);
-        float diagonal = sqrt(width*width + height*height) / 2;
-        bool topDown = ofRandomuf() < .5;
-        transitionCircle = ofRandomuf() < .5;
-        transitionManhattan = ofRandomuf() < .5;
-        for(int i = 0; i < n; i++) {
-            cv::Point2i cur = endPositions[i];
-            float begin;
-            if(transitionCircle) {
-                begin = ofMap(cv::norm(cur-center), 0, diagonal, 0, .75);
-            } else {
-                if(topDown) {
-                    begin = ofMap(cur.y, 0, height, 0, .75);
-                } else {
-                    begin = ofMap(cur.y, height, 0, 0, .75);
-                }
-            }
-            float end = begin + .25;
-            transitionBegin[i] = begin;
-            transitionEnd[i] = MIN(end, 1);
-            beginPositions[i] = endPositions[i];
-            unsigned int index = matchedIndices[i];
-            endPositions[i] = screenPositions[index];
-        }
-        
+        transitionInProcess = true; // transition starts
+        photomosaic.setTransitionStyle(ofRandomuf() < 0.5,
+                                       ofRandomuf() < 0.5,
+                                       ofRandomuf() < 0.5);
+        photomosaic.match(loadMat(filename));
         lastTransitionStart = ofGetElapsedTimeMillis();
     }
-    void updateTransition() {
+    void update() {
         float transitionPrev = transitionStatus;
-        transitionStatus = (ofGetElapsedTimeMillis() - lastTransitionStart) / (1000 * transitionSeconds);
+        transitionStatus = (ofGetElapsedTimeMillis() - lastTransitionStart) / (1000 * transitionDurationSeconds);
         transitionStatus = ofClamp(transitionStatus, 0, 1);
         if(transitionStatus == 1 && transitionPrev < 1) {
-            transitionFinished();
-            transitionInProcess = false;
+            transitionInProcess = false; // transition finishes
         }
     }
-    void transitionFinished() {
-        
-    }
-    void update() {
-        updateTransition();
-    }
     void draw() {
-        int n = beginPositions.size();
-        const std::vector<cv::Point2i>& atlasPositions = photomosaic.getAtlasPositions();
-        int side = photomosaic.getSide();
         ofMesh mesh;
         mesh.setMode(OF_PRIMITIVE_TRIANGLES);
+        int side = photomosaic.getSide();
+        const std::vector<cv::Point2i>& atlasPositions = photomosaic.getAtlasPositions();
+        std::vector<cv::Point2f> screenPositions = photomosaic.getCurrentPositions(transitionStatus);
+        int n = screenPositions.size();
         for(int i = 0; i < n; i++) {
-            cv::Point2i& begin = beginPositions[i], end = endPositions[i];
-            float t = ofMap(transitionStatus, transitionBegin[i], transitionEnd[i], 0, 1, true);
-            cv::Point2f lerp = transitionManhattan ?
-                manhattanLerp(begin, end, smoothstep(t)) :
-                euclideanLerp(begin, end, smoothstep(t));
-            cv::Point2i s = atlasPositions[i % atlasPositions.size()];
-            addSubsection(mesh, atlasTexture, lerp.x, lerp.y, side, side, s.x, s.y);
+            cv::Point2f screen = screenPositions[i];
+            cv::Point2i atlas = atlasPositions[i % atlasPositions.size()];
+            addSubsection(mesh, atlasTexture, screen.x, screen.y, side, side, atlas.x, atlas.y);
         }
         atlasTexture.bind();
         mesh.drawFaces();
