@@ -1,5 +1,5 @@
 # PhotoMosaic
 
-Large multi-screen photomosaic with transitions and realtime mosaic generation.
+Optimized for multi-screen display and efficient mosaic computation.
 
-The loading code assumes that all icons are square, and three channel images.
+The loading code assumes that all icons are square three channel images.
